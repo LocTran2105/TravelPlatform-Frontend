@@ -1,22 +1,27 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './components/Login';
 import Home from './components/Home';
+import Login from './components/Login';
 import Register from './components/Register';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Nếu người dùng vào /login thì hiện màn hình Login */}
+        {/* Trang chủ — nội dung tự đổi theo trạng thái đăng nhập, xem Home.jsx */}
+        <Route path="/" element={<Home />} />
+
         <Route path="/login" element={<Login />} />
-        
-        {/* Nếu người dùng vào /home thì hiện màn hình Home */}
+        <Route path="/register" element={<Register />} />
+
+        {/* /home dùng chung component Home — hiển thị đúng khi vừa đăng nhập xong */}
         <Route path="/home" element={<Home />} />
-        
-        <Route path="/register" element={<Register/>} />
-        
-        {/* Mặc định khi mới vào web sẽ tự động chuyển hướng sang /login */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
+
+        {/* TODO: /plan cho giao diện lập kế hoạch, /community cho trang chia sẻ chuyến đi */}
+        {/* <Route path="/plan" element={<Plan />} /> */}
+        {/* <Route path="/community" element={<Community />} /> */}
+
+        {/* Đường dẫn không hợp lệ -> quay về trang chủ */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

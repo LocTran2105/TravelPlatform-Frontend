@@ -7,14 +7,10 @@ import {
   Eye,
   EyeOff,
   Compass,
-  MapPin,
-  Sparkles,
   AlertCircle,
   ArrowRight,
-  ShieldCheck,
-  Globe,
   CheckCircle2,
-  X
+  X,
 } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
 
@@ -40,7 +36,6 @@ const Login = () => {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotStatus, setForgotStatus] = useState({ loading: false, sent: false, error: '' });
-
 
   // Xử lý gửi form đăng nhập
   const handleSubmit = async (e) => {
@@ -126,27 +121,38 @@ const Login = () => {
   };
 
   // Xử lý Đăng nhập Google
-  // Hàm này sẽ tự động chạy khi người dùng đăng nhập Google thành công trên popup
   const handleGoogleSuccess = async (credentialResponse) => {
     try {
-      // 1. Lấy token Google cấp cho Frontend
       const googleToken = credentialResponse.credential;
-      console.log("Token Google cấp:", googleToken);
 
-      // 2. Gửi token đó xuống Backend Spring Boot của chúng ta
       const response = await axios.post('http://localhost:8080/api/auth/google', {
-        token: googleToken
+        token: googleToken,
       });
 
-      // 3. Backend trả về JWT, lưu vào két sắt và chuyển trang
-      const jwt = response.data.token; 
-      localStorage.setItem('token', jwt);
-      alert("Đăng nhập Google thành công!");
-      navigate('/home');
+      // Lưu token + thông tin user giống hệt luồng đăng nhập thường —
+      // trước đây chỉ lưu token nên Home.jsx (dựa vào key 'user' để biết
+      // đã đăng nhập hay chưa) vẫn hiển thị như khách dù đã có token.
+      const data = response.data;
+      const token = data?.token || data?.accessToken;
 
+      if (token) {
+        localStorage.setItem('token', token);
+      }
+
+      if (data && typeof data === 'object') {
+        const userInfo = {
+          id: data.id,
+          email: data.email,
+          fullName: data.fullName || 'Khách du lịch',
+          role: data.role || 'USER',
+        };
+        localStorage.setItem('user', JSON.stringify(userInfo));
+      }
+
+      navigate('/home');
     } catch (error) {
-      console.error("Lỗi gửi token xuống Backend:", error);
-      alert("Đăng nhập thất bại. Xem console F12.");
+      console.error('Lỗi gửi token xuống Backend:', error);
+      setErrorMessage('Đăng nhập Google thất bại. Vui lòng thử lại.');
     }
   };
 
@@ -177,142 +183,83 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-stretch bg-slate-900 font-sans text-slate-800 antialiased selection:bg-emerald-500 selection:text-white">
-      {/* ================= PHẦN TRÁI: BANNER HÌNH ẢNH DU LỊCH (ẨN TRÊN MÀN HÌNH NHỎ) ================= */}
-      <div className="hidden lg:flex lg:w-1/2 relative flex-col justify-between p-12 overflow-hidden bg-slate-950">
-        {/* Hình nền du lịch tuyệt đẹp với hiệu ứng zoom nhẹ */}
-        <div
-          className="absolute inset-0 bg-cover bg-center opacity-45 scale-105 transition-transform duration-1000 ease-out"
-          style={{
-            backgroundImage: `url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=2073&auto=format&fit=crop')`,
-          }}
-        />
+    <div className="relative min-h-screen w-full overflow-hidden bg-slate-950 font-sans text-slate-800 antialiased">
+      {/* ================= NỀN: ẢNH DU LỊCH LÀM MỜ ================= */}
+      <div
+        className="absolute inset-0 scale-110 bg-cover bg-center blur-md"
+        style={{
+          backgroundImage: `url('https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=2400&auto=format&fit=crop')`,
+        }}
+        aria-hidden="true"
+      />
+      <div className="absolute inset-0 bg-slate-950/55" aria-hidden="true" />
 
-        {/* Lớp phủ gradient tạo chiều sâu điện ảnh */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-slate-900/40" />
-
-        {/* Header thương hiệu phía trên banner */}
-        <div className="relative z-10">
-          <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-emerald-400 text-xs font-semibold tracking-wide uppercase shadow-sm">
-            <Sparkles className="w-4 h-4 text-emerald-400" />
-            Nền tảng Du lịch Tự túc Thông minh
-          </div>
-
-          <div className="flex items-center gap-3 mt-5">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white shadow-lg shadow-emerald-500/25">
-              <Compass className="w-6 h-6 animate-pulse" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">TravelPlatform</h1>
-              <p className="text-xs text-slate-300 font-medium">Khám phá theo cách riêng của bạn</p>
-            </div>
-          </div>
+      {/* Logo góc trên bên trái — bấm để quay lại trang chủ */}
+      <Link to="/" className="relative z-10 inline-flex items-center gap-2 p-6">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 text-white shadow-lg shadow-emerald-500/25">
+          <Compass className="h-5 w-5" />
         </div>
+        <span className="text-lg font-bold text-white">TravelPlatform</span>
+      </Link>
 
-        {/* Nội dung truyền cảm hứng du lịch */}
-        <div className="relative z-10 my-auto max-w-lg">
-          <h2 className="text-4xl font-extrabold text-white leading-tight">
-            Mỗi chuyến đi là một <span className="text-emerald-400 bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-200">hành trình diệu kỳ</span>.
-          </h2>
-          <p className="mt-4 text-slate-300 text-base leading-relaxed">
-            Lên lịch trình tự túc cá nhân hóa, khám phá các địa điểm bản địa độc đáo, quản lý chi phí thông minh và lưu giữ trọn vẹn từng khoảnh khắc đáng nhớ.
-          </p>
+      {/* ================= MODAL ĐĂNG NHẬP ================= */}
+      <div className="relative z-10 flex min-h-[calc(100vh-84px)] items-center justify-center px-4 pb-10">
+        <div className="relative w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl sm:p-9">
+          {/* Nút đóng — quay về trang chủ */}
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="absolute right-5 top-5 text-slate-400 transition-colors hover:text-slate-600"
+            title="Đóng"
+          >
+            <X className="h-5 w-5" />
+          </button>
 
-          {/* 3 tính năng nổi bật dạng thẻ glassmorphism */}
-          <div className="mt-8 space-y-3">
-            <div className="flex items-center gap-3.5 p-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/10 text-white transition-all hover:bg-white/15">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
-                <Globe className="w-4 h-4" />
-              </div>
-              <div className="text-sm">
-                <p className="font-semibold text-white">Bản đồ du lịch tương tác</p>
-                <p className="text-xs text-slate-300">Gợi ý lộ trình tối ưu và địa điểm ăn uống, nghỉ dưỡng</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3.5 p-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/10 text-white transition-all hover:bg-white/15">
-              <div className="w-8 h-8 rounded-lg bg-teal-500/20 text-teal-400 flex items-center justify-center flex-shrink-0">
-                <MapPin className="w-4 h-4" />
-              </div>
-              <div className="text-sm">
-                <p className="font-semibold text-white">Lịch trình tự túc theo ngày</p>
-                <p className="text-xs text-slate-300">Tự do tùy biến điểm dừng chân theo sở thích riêng</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer của Banner */}
-        <div className="relative z-10 flex items-center justify-between text-xs text-slate-400 pt-6 border-t border-white/10">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>Hệ thống bảo mật dữ liệu an toàn</span>
-          </div>
-          <span>© 2026 TravelPlatform</span>
-        </div>
-      </div>
-
-      {/* ================= PHẦN PHẢI: KHU VỰC FORM ĐĂNG NHẬP ================= */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-10 lg:p-12 bg-slate-50 relative overflow-y-auto">
-        {/* Background họa tiết mờ ảo nhẹ cho bên form */}
-        <div className="absolute top-0 right-0 -mt-12 -mr-12 w-80 h-80 bg-emerald-100/50 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-80 h-80 bg-teal-100/40 rounded-full blur-3xl pointer-events-none" />
-
-        {/* Container Form Card */}
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-100 p-8 sm:p-10 relative z-10">
-          {/* Header trên Mobile: Logo du lịch */}
-          <div className="lg:hidden flex items-center justify-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md">
-              <Compass className="w-5 h-5" />
-            </div>
-            <span className="text-xl font-bold text-slate-800">TravelPlatform</span>
-          </div>
-
-          {/* Tiêu đề Chào mừng */}
-          <div className="text-center sm:text-left mb-7">
-            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-              Đăng nhập <span className="inline-block animate-bounce">👋</span>
+          {/* Tiêu đề */}
+          <div className="mb-7 text-center">
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+              Đăng nhập
             </h2>
             <p className="mt-1.5 text-sm text-slate-500">
-              Chào mừng bạn trở lại! Sẵn sàng cho những chuyến đi mới cùng TravelPlatform.
+              Chào mừng bạn trở lại! Sẵn sàng cho những chuyến đi mới cùng
+              TravelPlatform.
             </p>
           </div>
 
           {/* Thông báo lỗi nếu có */}
           {errorMessage && (
-            <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-700 text-sm animate-fade-in">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-500 mt-0.5" />
+            <div className="mb-5 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-700">
+              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-500" />
               <div className="flex-1">
                 <p className="font-medium text-rose-800">Đăng nhập chưa thành công</p>
-                <p className="mt-0.5 text-rose-600 leading-relaxed text-xs sm:text-sm">{errorMessage}</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-rose-600 sm:text-sm">
+                  {errorMessage}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setErrorMessage('')}
-                className="text-rose-400 hover:text-rose-600 p-0.5"
+                className="p-0.5 text-rose-400 hover:text-rose-600"
                 title="Đóng thông báo"
               >
-                <X className="w-4 h-4" />
+                <X className="h-4 w-4" />
               </button>
             </div>
           )}
 
           {/* Thông báo thành công */}
           {successMessage && (
-            <div className="mb-5 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3 text-emerald-800 text-sm animate-fade-in">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+            <div className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm text-emerald-800">
+              <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-emerald-600" />
               <span>{successMessage}</span>
             </div>
           )}
 
-          {/* Nút Đăng nhập bằng Google (Chuẩn nhận diện thương hiệu Google) */}
-         {/* Nút Đăng nhập bằng Google CHUẨN */}
-          <div className="flex justify-center w-full mb-6 mt-2">
+          {/* Nút Đăng nhập bằng Google */}
+          <div className="mb-6 flex w-full justify-center">
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
-              onError={() => {
-                setErrorMessage('Đăng nhập Google thất bại');
-              }}
+              onError={() => setErrorMessage('Đăng nhập Google thất bại')}
               useOneTap
               theme="outline"
               size="large"
@@ -321,13 +268,13 @@ const Login = () => {
             />
           </div>
 
-          {/* Dải phân cách hoặc */}
+          {/* Dải phân cách */}
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-200" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-3 text-slate-400 font-medium tracking-wider">
+              <span className="bg-white px-3 font-medium tracking-wider text-slate-400">
                 Hoặc bằng tài khoản
               </span>
             </div>
@@ -335,14 +282,13 @@ const Login = () => {
 
           {/* Form nhập Email & Mật khẩu */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Input Email */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">
                 Địa chỉ Email
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Mail className="w-4 h-4" />
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                  <Mail className="h-4 w-4" />
                 </div>
                 <input
                   type="email"
@@ -354,15 +300,14 @@ const Login = () => {
                   }}
                   placeholder="traveler@example.com"
                   autoComplete="email"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                 />
               </div>
             </div>
 
-            {/* Input Mật khẩu */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
                   Mật khẩu
                 </label>
                 <button
@@ -371,14 +316,14 @@ const Login = () => {
                     setForgotEmail(email);
                     setShowForgotModal(true);
                   }}
-                  className="text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:underline transition-colors"
+                  className="text-xs font-medium text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
                 >
                   Quên mật khẩu?
                 </button>
               </div>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Lock className="w-4 h-4" />
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                  <Lock className="h-4 w-4" />
                 </div>
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -390,51 +335,48 @@ const Login = () => {
                   }}
                   placeholder="••••••••"
                   autoComplete="current-password"
-                  className="w-full pl-10 pr-11 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-11 text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none transition-colors"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 transition-colors hover:text-slate-600 focus:outline-none"
                   title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            {/* Hàng Ghi nhớ tài khoản */}
             <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
+              <label className="flex cursor-pointer select-none items-center gap-2">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500 cursor-pointer"
+                  className="h-4 w-4 cursor-pointer rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                 />
                 <span className="text-xs font-medium text-slate-600">Ghi nhớ tài khoản này</span>
               </label>
 
-              {/* Nút tiện ích thử nghiệm */}
               <button
                 type="button"
                 onClick={handleQuickFillDemo}
-                className="text-xs text-slate-500 hover:text-emerald-600 transition-colors flex items-center gap-1 font-medium"
+                className="flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-emerald-600"
                 title="Tự động điền tài khoản mẫu để trải nghiệm nhanh"
               >
                 <span>⚡ Điền mẫu demo</span>
               </button>
             </div>
 
-            {/* Nút Đăng nhập chính */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-2 py-3 px-4 rounded-xl text-white font-semibold text-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-[0.99] shadow-md shadow-emerald-600/20 hover:shadow-lg hover:shadow-emerald-600/30 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 group"
+              className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-600/20 transition-all duration-200 hover:from-emerald-700 hover:to-teal-700 hover:shadow-lg hover:shadow-emerald-600/30 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isLoading ? (
                 <>
-                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                  <svg className="h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                   </svg>
@@ -443,19 +385,19 @@ const Login = () => {
               ) : (
                 <>
                   <span>Bắt đầu hành trình</span>
-                  <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </>
               )}
             </button>
           </form>
 
           {/* Điều hướng đến Đăng ký tài khoản */}
-          <div className="mt-7 pt-5 border-t border-slate-100 text-center">
-            <p className="text-xs sm:text-sm text-slate-500">
+          <div className="mt-7 border-t border-slate-100 pt-5 text-center">
+            <p className="text-xs text-slate-500 sm:text-sm">
               Bạn chưa có tài khoản?{' '}
               <Link
                 to="/register"
-                className="font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors"
+                className="font-semibold text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
               >
                 Đăng ký ngay miễn phí
               </Link>
@@ -466,36 +408,38 @@ const Login = () => {
 
       {/* ================= MODAL QUÊN MẬT KHẨU ================= */}
       {showForgotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="w-full max-w-md bg-white rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-100 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl sm:p-8">
             <button
               onClick={() => {
                 setShowForgotModal(false);
                 setForgotStatus({ loading: false, sent: false, error: '' });
               }}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors"
+              className="absolute right-4 top-4 rounded-lg p-1 text-slate-400 transition-colors hover:text-slate-600"
             >
-              <X className="w-5 h-5" />
+              <X className="h-5 w-5" />
             </button>
 
-            <div className="text-center mb-6">
-              <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
-                <Lock className="w-6 h-6" />
+            <div className="mb-6 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                <Lock className="h-6 w-6" />
               </div>
               <h3 className="text-lg font-bold text-slate-900">Khôi phục mật khẩu</h3>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              <p className="mt-1 text-xs text-slate-500 sm:text-sm">
                 Nhập địa chỉ email đăng ký để nhận liên kết đặt lại mật khẩu của bạn.
               </p>
             </div>
 
             {forgotStatus.sent ? (
-              <div className="text-center py-4">
-                <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3">
-                  <CheckCircle2 className="w-7 h-7" />
+              <div className="py-4 text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                  <CheckCircle2 className="h-7 w-7" />
                 </div>
                 <h4 className="text-base font-semibold text-slate-900">Đã gửi hướng dẫn!</h4>
-                <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                  Chúng tôi đã gửi thư hướng dẫn khôi phục mật khẩu đến <strong className="text-slate-800">{forgotEmail}</strong>. Vui lòng kiểm tra hộp thư (bao gồm cả thư rác).
+                <p className="mx-auto mt-1 max-w-xs text-xs text-slate-500">
+                  Chúng tôi đã gửi thư hướng dẫn khôi phục mật khẩu đến{' '}
+                  <strong className="text-slate-800">{forgotEmail}</strong>. Vui lòng kiểm tra
+                  hộp thư (bao gồm cả thư rác).
                 </p>
                 <button
                   type="button"
@@ -503,7 +447,7 @@ const Login = () => {
                     setShowForgotModal(false);
                     setForgotStatus({ loading: false, sent: false, error: '' });
                   }}
-                  className="mt-5 w-full py-2.5 px-4 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors"
+                  className="mt-5 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
                 >
                   Đã hiểu & Quay lại
                 </button>
@@ -511,23 +455,23 @@ const Login = () => {
             ) : (
               <form onSubmit={handleForgotSubmit} className="space-y-4">
                 {forgotStatus.error && (
-                  <p className="text-xs text-rose-600 bg-rose-50 p-2.5 rounded-lg border border-rose-200">
+                  <p className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-600">
                     {forgotStatus.error}
                   </p>
                 )}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                  <label className="mb-1 block text-xs font-semibold uppercase text-slate-700">
                     Email của bạn
                   </label>
                   <div className="relative">
-                    <Mail className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+                    <Mail className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
                     <input
                       type="email"
                       required
                       value={forgotEmail}
                       onChange={(e) => setForgotEmail(e.target.value)}
                       placeholder="traveler@example.com"
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-800 transition-all focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                     />
                   </div>
                 </div>
@@ -536,20 +480,16 @@ const Login = () => {
                   <button
                     type="button"
                     onClick={() => setShowForgotModal(false)}
-                    className="w-1/2 py-2.5 px-4 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                    className="w-1/2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
                   >
                     Hủy bỏ
                   </button>
                   <button
                     type="submit"
                     disabled={forgotStatus.loading}
-                    className="w-1/2 py-2.5 px-4 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+                    className="flex w-1/2 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
                   >
-                    {forgotStatus.loading ? (
-                      <span>Đang gửi...</span>
-                    ) : (
-                      <span>Gửi yêu cầu</span>
-                    )}
+                    {forgotStatus.loading ? <span>Đang gửi...</span> : <span>Gửi yêu cầu</span>}
                   </button>
                 </div>
               </form>

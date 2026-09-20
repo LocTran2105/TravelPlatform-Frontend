@@ -1,155 +1,396 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-import { LogOut, MapPin, Compass, Plus, Navigation } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  Compass,
+  Search,
+  Users,
+  MapPin,
+  Receipt,
+  ShieldCheck,
+  LogOut,
+  Menu,
+  X,
+  ArrowUpRight,
+} from 'lucide-react';
 
-// Fix lỗi mất icon mặc định của Leaflet trong Vite
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+/**
+ * Home.jsx — Trang chủ chính của hệ thống.
+ *
+ * Dùng chung cho cả người dùng đã đăng nhập và chưa đăng nhập:
+ * - Header (logo, nav, thanh tìm kiếm, khu vực tài khoản) luôn giữ nguyên.
+ * - Chỉ phần hero ở giữa đổi nội dung tùy theo trạng thái đăng nhập
+ *   (đọc từ 'user' trong localStorage, giống cách Login.jsx đang lưu).
+ * - Phần tính năng & cộng đồng bên dưới hiển thị cho mọi người.
+ */
 
-let DefaultIcon = L.icon({
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41]
-});
-L.Marker.prototype.options.icon = DefaultIcon;
+const FEATURES = [
+  {
+    icon: MapPin,
+    title: 'Lộ trình theo từng ngày',
+    description:
+      'Chia chuyến đi theo trục thời gian, ghim địa điểm lên bản đồ và nhân bản lịch trình từ cộng đồng.',
+    tint: 'bg-emerald-50 text-emerald-700',
+    span: 'sm:col-span-2',
+  },
+  {
+    icon: Receipt,
+    title: 'Chia tiền nhóm tự động',
+    description: 'Ghi lại từng khoản chi, hệ thống tự tính toán ai nợ ai.',
+    tint: 'bg-amber-50 text-amber-700',
+  },
+  {
+    icon: Users,
+    title: 'Cộng đồng du lịch',
+    description: 'Theo dõi, đánh giá, bình luận và chia sẻ hành trình của bạn.',
+    tint: 'bg-sky-50 text-sky-700',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Cảnh báo an toàn & lưu trú',
+    description:
+      'Cảnh báo thời tiết, giao thông được cộng đồng xác thực trên bản đồ, và đặt phòng ngay trong hệ thống.',
+    tint: 'bg-rose-50 text-rose-700',
+    span: 'sm:col-span-2',
+  },
+];
+
+// Dữ liệu minh hoạ cho khu vực "Cộng đồng chia sẻ" — thay bằng dữ liệu thật khi có API
+const COMMUNITY_TRIPS = [
+  {
+    image:
+      'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=800&auto=format&fit=crop',
+    title: 'Trekking Tà Năng - Phan Dũng, 3 ngày 2 đêm',
+    author: 'Minh Anh',
+  },
+  {
+    image:
+      'https://images.unsplash.com/photo-1500835556837-99ac94a94552?q=80&w=800&auto=format&fit=crop',
+    title: 'Săn mây Tà Xùa cuối tuần',
+    author: 'Gia Bảo',
+  },
+  {
+    image:
+      'https://images.unsplash.com/photo-1518684079-3c830dcef090?q=80&w=800&auto=format&fit=crop',
+    title: 'Đảo Phú Quý tự túc 4 ngày',
+    author: 'Thuỳ Trang',
+  },
+];
 
 const Home = () => {
   const navigate = useNavigate();
-  const [places, setPlaces] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState(null);
 
-  // Tọa độ trung tâm mặc định (VD: TP.HCM)
-  const defaultCenter = [10.762622, 106.660172];
-
   useEffect(() => {
-    // Lấy thông tin user từ localStorage
     const savedUser = localStorage.getItem('user');
-    if (savedUser) setUser(JSON.parse(savedUser));
-
-    const fetchMyPlaces = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        navigate('/login');
-        return;
-      }
+    if (savedUser) {
       try {
-        // Gọi API lấy danh sách địa điểm của user
-        // TẠM THỜI MOCK DATA ĐỂ TEST GIAO DIỆN NẾU BACKEND CHƯA CÓ API NÀY
-        /*
-        const response = await axios.get('http://localhost:8080/api/map/places', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setPlaces(response.data);
-        */
-        
-        // Dữ liệu mẫu để hiển thị lên bản đồ (Bạn có thể xóa phần này khi nối API thật)
-        setPlaces([
-          { id: 1, name: "Chợ Bến Thành", lat: 10.7725, lng: 106.6980, desc: "Biểu tượng của thành phố" },
-          { id: 2, name: "Phố đi bộ Nguyễn Huệ", lat: 10.7733, lng: 106.7027, desc: "Nơi dạo mát buổi tối tuyệt vời" }
-        ]);
-
-      } catch (error) {
-        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-          localStorage.removeItem('token');
-          navigate('/login');
-        }
-      } finally {
-        setIsLoading(false);
+        setUser(JSON.parse(savedUser));
+      } catch {
+        setUser(null);
       }
-    };
+    }
+  }, []);
 
-    fetchMyPlaces();
-  }, [navigate]);
+  const isLoggedIn = Boolean(user);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    navigate('/login');
+    setUser(null);
+    setMenuOpen(false);
+    navigate('/');
+  };
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    // TODO: nối tới API tìm địa điểm khi backend có endpoint tương ứng
+    console.log('Tìm địa điểm:', searchTerm);
   };
 
   return (
-    <div className="h-screen w-full flex flex-col bg-slate-50 font-sans text-slate-800">
-      {/* HEADER NAVBAR */}
-      <header className="h-16 bg-white border-b border-slate-200 shadow-sm flex items-center justify-between px-6 z-20">
-        <div className="flex items-center gap-2 text-emerald-600">
-          <Compass className="w-6 h-6 animate-pulse" />
-          <h1 className="text-xl font-bold tracking-tight">TravelPlatform</h1>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-medium text-slate-600 hidden sm:block">
-            Xin chào, {user?.fullName || 'Nhà thám hiểm'}! 👋
-          </span>
-          <button 
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
-          >
-            <LogOut className="w-4 h-4" /> Đăng xuất
-          </button>
-        </div>
-      </header>
+    <div className="min-h-screen w-full bg-white font-sans text-[#16241F] antialiased">
+      {/* ===================== HEADER ===================== */}
+      <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/90 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
+          {/* Logo + nav trái */}
+          <div className="flex items-center gap-8">
+            <Link to="/" className="flex flex-shrink-0 items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 text-white">
+                <Compass className="h-4.5 w-4.5" />
+              </div>
+              <span className="text-base font-bold tracking-tight text-slate-900">
+                TravelPlatform
+              </span>
+            </Link>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        
-        {/* CỘT TRÁI: DANH SÁCH ĐỊA ĐIỂM */}
-        <div className="w-full md:w-1/3 lg:w-1/4 bg-white border-r border-slate-200 overflow-y-auto z-10 flex flex-col">
-          <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-            <h2 className="font-bold text-slate-800 flex items-center gap-2">
-              <Navigation className="w-4 h-4 text-emerald-500" /> Hành trình của tôi
-            </h2>
-            <button className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200 transition-colors" title="Thêm địa điểm mới">
-              <Plus className="w-4 h-4" />
-            </button>
+            <nav className="hidden items-center gap-1 md:flex">
+              <Link
+                to="/"
+                className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700"
+              >
+                Trang chủ
+              </Link>
+              <Link
+                to="/community"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+              >
+                Cộng đồng
+              </Link>
+            </nav>
           </div>
-          
-          <div className="p-4 space-y-3 flex-1 overflow-y-auto">
-            {isLoading ? (
-              <p className="text-center text-sm text-slate-500 mt-5">Đang tải dữ liệu...</p>
-            ) : places.length === 0 ? (
-              <p className="text-center text-sm text-slate-500 mt-5">Bạn chưa lưu địa điểm nào.</p>
+
+          {/* Thanh tìm kiếm */}
+          <form
+            onSubmit={handleSearchSubmit}
+            className="hidden max-w-md flex-1 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 transition-colors focus-within:border-emerald-400 focus-within:bg-white md:flex"
+          >
+            <Search className="h-4 w-4 flex-shrink-0 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tìm địa điểm, thành phố..."
+              className="w-full bg-transparent text-sm text-slate-700 placeholder-slate-400 focus:outline-none"
+            />
+          </form>
+
+          {/* Khu vực tài khoản (desktop) */}
+          <div className="ml-auto hidden items-center gap-3 md:flex">
+            {isLoggedIn ? (
+              <>
+                <span className="text-sm font-medium text-slate-600">
+                  Xin chào, {user.fullName || 'bạn'}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1.5 rounded-lg bg-rose-50 px-3.5 py-2 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-100"
+                >
+                  <LogOut className="h-4 w-4" /> Đăng xuất
+                </button>
+              </>
             ) : (
-              places.map((place) => (
-                <div key={place.id} className="p-4 rounded-xl border border-slate-200 bg-white hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer group">
-                  <h3 className="font-semibold text-slate-800 group-hover:text-emerald-600 flex items-start gap-2 text-sm">
-                    <MapPin className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                    {place.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-1.5 ml-6 line-clamp-2">{place.desc}</p>
-                </div>
-              ))
+              <>
+                <Link
+                  to="/login"
+                  className="px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+                >
+                  Đăng nhập
+                </Link>
+                <Link
+                  to="/register"
+                  className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-emerald-600/20 transition-all hover:from-emerald-700 hover:to-teal-700"
+                >
+                  Đăng ký
+                </Link>
+              </>
             )}
           </div>
+
+          {/* Nút menu mobile */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            className="ml-auto p-1.5 text-slate-600 md:hidden"
+            aria-label={menuOpen ? 'Đóng menu' : 'Mở menu'}
+          >
+            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
 
-        {/* CỘT PHẢI: BẢN ĐỒ LEAFLET */}
-        <div className="flex-1 relative z-0 bg-slate-200">
-          <MapContainer center={defaultCenter} zoom={13} style={{ height: '100%', width: '100%' }}>
-           {/* Lớp nền bản đồ xịn sò của Google Maps */}
-          <TileLayer
-            url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
-            attribution='&copy; <a href="https://www.google.com/maps">Google Maps</a>'
-          />
-            {places.map((place) => (
-              <Marker key={place.id} position={[place.lat, place.lng]}>
-                <Popup className="custom-popup">
-                  <div className="text-sm">
-                    <strong className="text-emerald-600 text-base">{place.name}</strong>
-                    <p className="text-slate-600 mt-1">{place.desc}</p>
+        {/* Menu mobile xổ xuống: nav + search + auth gộp lại */}
+        {menuOpen && (
+          <div className="border-t border-slate-100 px-4 py-4 md:hidden">
+            <form
+              onSubmit={handleSearchSubmit}
+              className="mb-3 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2"
+            >
+              <Search className="h-4 w-4 flex-shrink-0 text-slate-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Tìm địa điểm, thành phố..."
+                className="w-full bg-transparent text-sm text-slate-700 placeholder-slate-400 focus:outline-none"
+              />
+            </form>
+
+            <div className="flex flex-col gap-1">
+              <Link
+                to="/"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-lg bg-emerald-50 px-3 py-2.5 text-sm font-medium text-emerald-700"
+              >
+                Trang chủ
+              </Link>
+              <Link
+                to="/community"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Cộng đồng
+              </Link>
+
+              <div className="mt-2 border-t border-slate-100 pt-3">
+                {isLoggedIn ? (
+                  <button
+                    onClick={handleLogout}
+                    className="flex w-full items-center gap-1.5 rounded-lg bg-rose-50 px-3 py-2.5 text-sm font-semibold text-rose-600"
+                  >
+                    <LogOut className="h-4 w-4" /> Đăng xuất
+                  </button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Link
+                      to="/login"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex-1 rounded-lg border border-slate-200 px-3 py-2.5 text-center text-sm font-medium text-slate-700"
+                    >
+                      Đăng nhập
+                    </Link>
+                    <Link
+                      to="/register"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-2.5 text-center text-sm font-semibold text-white"
+                    >
+                      Đăng ký
+                    </Link>
                   </div>
-                </Popup>
-              </Marker>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </header>
+
+      {/* ===================== HERO — nội dung đổi theo trạng thái đăng nhập ===================== */}
+      <section className="mx-auto max-w-3xl px-6 pb-10 pt-16 text-center sm:pt-24">
+        {isLoggedIn ? (
+          <>
+            <h1 className="text-3xl font-extrabold leading-tight text-slate-900 sm:text-5xl">
+              Chào mừng trở lại, {user.fullName?.split(' ').slice(-1)[0] || 'bạn'}
+            </h1>
+            <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-slate-500 sm:text-lg">
+              Tiếp tục chuyến đi đang lên kế hoạch, hoặc bắt đầu một hành
+              trình hoàn toàn mới.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="text-3xl font-extrabold leading-tight text-slate-900 sm:text-5xl">
+              Tự lên lịch trình cho chuyến đi của riêng bạn
+            </h1>
+            <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-slate-500 sm:text-lg">
+              Ghim địa điểm lên bản đồ, chia tiền với bạn đồng hành và giữ lại
+              từng chặng đường — tất cả trong một nơi.
+            </p>
+          </>
+        )}
+
+        <Link
+          to="/plan"
+          className="group mt-8 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition-all hover:from-emerald-700 hover:to-teal-700 active:scale-[0.98] sm:text-base"
+        >
+          Bắt đầu lập kế hoạch
+          <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        </Link>
+      </section>
+
+      {/* Dải ảnh du lịch — so le nhẹ để không phẳng lì, gợi cảm giác "đang khám phá" */}
+      <div className="mx-auto grid max-w-5xl grid-cols-3 gap-3 px-6 pb-20 sm:gap-4">
+        <img
+          src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=800&auto=format&fit=crop"
+          alt="Đường mòn núi"
+          className="h-36 w-full rounded-2xl object-cover sm:h-56"
+        />
+        <img
+          src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=800&auto=format&fit=crop"
+          alt="Cung đường ven biển"
+          className="h-36 w-full translate-y-4 rounded-2xl object-cover sm:h-56"
+        />
+        <img
+          src="https://images.unsplash.com/photo-1500835556837-99ac94a94552?q=80&w=800&auto=format&fit=crop"
+          alt="Đỉnh núi lúc bình minh"
+          className="h-36 w-full rounded-2xl object-cover sm:h-56"
+        />
+      </div>
+
+      {/* ===================== TÍNH NĂNG ===================== */}
+      <section className="border-t border-slate-100 bg-[#F7F8F6]">
+        <div className="mx-auto max-w-5xl px-6 py-20 sm:px-10">
+          <div className="mb-10 max-w-lg">
+            <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">
+              Một hệ thống, đủ cho cả chuyến đi
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-slate-500 sm:text-base">
+              Từ lúc lên ý tưởng đến lúc quay về, mọi phần của chuyến đi đều
+              nằm trong cùng một nơi.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {FEATURES.map(({ icon: Icon, title, description, tint, span }) => (
+              <div
+                key={title}
+                className={`rounded-2xl p-6 ${tint} ${span || ''}`}
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/70">
+                  <Icon className="h-4.5 w-4.5" />
+                </div>
+                <h3 className="mt-4 text-base font-semibold text-slate-900">
+                  {title}
+                </h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                  {description}
+                </p>
+              </div>
             ))}
-          </MapContainer>
+          </div>
+        </div>
+      </section>
+
+      {/* ===================== CỘNG ĐỒNG ===================== */}
+      <section className="mx-auto max-w-5xl px-6 py-20 sm:px-10">
+        <div className="mb-10 flex items-end justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">
+              Chuyến đi từ cộng đồng
+            </h2>
+            <p className="mt-2 text-sm text-slate-500 sm:text-base">
+              Lấy cảm hứng từ những hành trình người dùng khác đã chia sẻ.
+            </p>
+          </div>
+          <Link
+            to="/community"
+            className="hidden flex-shrink-0 text-sm font-semibold text-emerald-700 hover:text-emerald-800 sm:block"
+          >
+            Xem tất cả
+          </Link>
         </div>
 
-      </main>
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+          {COMMUNITY_TRIPS.map((trip) => (
+            <div key={trip.title} className="group cursor-pointer">
+              <div className="overflow-hidden rounded-2xl">
+                <img
+                  src={trip.image}
+                  alt={trip.title}
+                  className="h-44 w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+              </div>
+              <h3 className="mt-3 text-sm font-semibold text-slate-900">
+                {trip.title}
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">Bởi {trip.author}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <footer className="border-t border-slate-100 px-6 py-8 text-center text-xs text-slate-400 sm:px-10">
+        © 2026 TravelPlatform
+      </footer>
     </div>
   );
 };
