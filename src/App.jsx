@@ -4,7 +4,8 @@ import Login from './components/Login';
 import Register from './components/Register';
 import ResetPassword from './components/ResetPassword';
 import Profile from './components/Profile';
-
+import PlanTrip from './components/PlanTrip';
+import TripDetail from './components/TripDetail'; // Nhớ import ở trên cùng
 function App() {
   return (
     <BrowserRouter>
@@ -26,6 +27,8 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/plan" element={<PlanTrip />} />
+        <Route path="/trips/:tripId" element={<TripDetail />} />
       </Routes>
     </BrowserRouter>
   );
