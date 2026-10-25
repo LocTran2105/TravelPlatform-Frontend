@@ -164,7 +164,7 @@ const Login = () => {
   };
 
   // Xử lý gửi yêu cầu quên mật khẩu
-  const handleForgotSubmit = (e) => {
+  const handleForgotSubmit = async (e) => {
     e.preventDefault();
     if (!forgotEmail.trim()) {
       setForgotStatus({ loading: false, sent: false, error: 'Vui lòng nhập địa chỉ email.' });
@@ -172,14 +172,19 @@ const Login = () => {
     }
     setForgotStatus({ loading: true, sent: false, error: '' });
 
-    // Giả lập gửi mail khôi phục mật khẩu thân thiện
-    setTimeout(() => {
+    try {
+      // Gọi API thực tế
+      await axios.post(`http://localhost:8080/api/auth/forgot-password?email=${forgotEmail}`);
+      
       setForgotStatus({
         loading: false,
         sent: true,
         error: '',
       });
-    }, 1000);
+    } catch (error) {
+      const msg = error.response?.data || 'Không thể gửi email. Vui lòng kiểm tra lại email hoặc thử lại sau.';
+      setForgotStatus({ loading: false, sent: false, error: msg });
+    }
   };
 
   return (

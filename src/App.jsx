@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Home from './components/Home';
 import Login from './components/Login';
 import Register from './components/Register';
+import ResetPassword from './components/ResetPassword';
+import Profile from './components/Profile';
 
 function App() {
   return (
@@ -22,6 +24,8 @@ function App() {
 
         {/* Đường dẫn không hợp lệ -> quay về trang chủ */}
         <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/profile" element={<Profile />} />
       </Routes>
     </BrowserRouter>
   );

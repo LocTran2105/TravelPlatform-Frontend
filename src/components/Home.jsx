@@ -160,9 +160,17 @@ const Home = () => {
           <div className="ml-auto hidden items-center gap-3 md:flex">
             {isLoggedIn ? (
               <>
-                <span className="text-sm font-medium text-slate-600">
-                  Xin chào, {user.fullName || 'bạn'}
-                </span>
+                <Link
+                  to="/profile"
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-slate-50"
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700">
+                    {user.fullName?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <span className="text-sm font-medium text-slate-700 hover:text-emerald-600">
+                    Xin chào, {user.fullName || 'bạn'}
+                  </span>
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-1.5 rounded-lg bg-rose-50 px-3.5 py-2 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-100"
