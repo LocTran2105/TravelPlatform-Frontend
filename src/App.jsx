@@ -2,7 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Home from './components/Home';
 import Login from './components/Login';
 import Register from './components/Register';
-
+import PlanTrip from './components/PlanTrip';
+import TripDetail from './components/TripDetail'; // Nhớ import ở trên cùng
 function App() {
   return (
     <BrowserRouter>
@@ -22,6 +23,9 @@ function App() {
 
         {/* Đường dẫn không hợp lệ -> quay về trang chủ */}
         <Route path="*" element={<Navigate to="/" replace />} />
+
+        <Route path="/plan" element={<PlanTrip />} />
+        <Route path="/trips/:tripId" element={<TripDetail />} />
       </Routes>
     </BrowserRouter>
   );
