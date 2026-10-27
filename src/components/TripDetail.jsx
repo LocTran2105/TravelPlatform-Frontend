@@ -4,6 +4,7 @@ import axios from 'axios';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import TripReviews from './TripReviews';
 import { 
   ArrowLeft, Calendar, MapPin, Plus, 
   Search, X, Navigation, Users, Receipt, 
@@ -305,6 +306,7 @@ const TripDetail = () => {
                   </div>
                 ))}
               </div>
+              <TripReviews tripId={trip.id} /> 
             </div>
           </div>
         )}
