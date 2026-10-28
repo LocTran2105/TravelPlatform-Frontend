@@ -1,33 +1,28 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-// Nhớ đảm bảo bạn có import component TripReviews nếu dùng ở phần Overview nhé
 import TripReviews from './TripReviews'; 
 import { 
   ArrowLeft, Calendar, MapPin, Plus, 
-  Search, X, Navigation, Users, Receipt, 
+  Search, X, Users, Receipt, 
   Share2, MoreHorizontal, ChevronLeft, ChevronRight,
   Wand2, Plane, Bed, Car, Train, Paperclip, CheckSquare, Compass,
-  Clock, MessageSquare
+  MessageSquare, Star, Heart, Send, Image as ImageIcon
 } from 'lucide-react';
 
 // ================= COMPONENT HỖ TRỢ BẢN ĐỒ =================
 function MapBounds({ destinations, activeDestinationId }) {
   const map = useMap();
-  
   useEffect(() => {
-    // Nếu có một điểm đang được chọn -> Phóng to và căn giữa điểm đó
     if (activeDestinationId) {
       const activeDest = destinations.find(d => d.id === activeDestinationId);
       if (activeDest) {
         map.flyTo([activeDest.latitude, activeDest.longitude], 16, { animate: true, duration: 1.5 });
       }
-    } 
-    // Nếu không có điểm nào được chọn, fit toàn bộ bản đồ
-    else if (destinations && destinations.length > 0) {
+    } else if (destinations && destinations.length > 0) {
       const bounds = L.latLngBounds(destinations.map(d => [d.latitude, d.longitude]));
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15, animate: true });
     }
@@ -35,12 +30,10 @@ function MapBounds({ destinations, activeDestinationId }) {
   return null;
 }
 
-// Hàm tạo Icon Marker: Phóng to và sáng lên nếu đang được click
 const createCustomMarker = (number, isActive) => {
   const size = isActive ? 36 : 24;
   const shadow = isActive ? '0 4px 10px rgba(255, 86, 69, 0.6)' : '0 2px 5px rgba(0,0,0,0.3)';
   const border = isActive ? '3px solid white' : '2px solid white';
-  
   return L.divIcon({
     className: 'custom-div-icon',
     html: `<div style="background-color: #FF5645; color: white; width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: ${isActive ? '16px' : '12px'}; border: ${border}; box-shadow: ${shadow}; transition: all 0.3s ease;">${number}</div>`,
@@ -48,12 +41,6 @@ const createCustomMarker = (number, isActive) => {
     iconAnchor: [size/2, size/2]
   });
 };
-
-const MOCK_EXPLORE_PLACES = [
-  { id: 1, title: 'Best attractions in Hanoi', desc: 'Most often-seen on the web', image: 'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=600&auto=format&fit=crop', provider: 'TravelPlatform' },
-  { id: 2, title: 'Best restaurants in Hanoi', desc: 'Highly rated by locals', image: 'https://images.unsplash.com/photo-1583095123995-1718f40776b9?q=80&w=600&auto=format&fit=crop', provider: 'TravelPlatform' },
-  { id: 3, title: 'Search hotels with transparent pricing', desc: 'Find the best deals', image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=600&auto=format&fit=crop', provider: 'TravelPlatform' },
-];
 
 const TripDetail = () => {
   const { tripId } = useParams();
@@ -63,50 +50,53 @@ const TripDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // States Layout
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeSection, setActiveSection] = useState('overview');
   const [isItineraryExpanded, setIsItineraryExpanded] = useState(false);
   
-  // States Điều hướng & Bản đồ
   const [focusedDayId, setFocusedDayId] = useState(null);
   const [activeDestination, setActiveDestination] = useState(null);
   const [routePositions, setRoutePositions] = useState([]);
 
-  // States Thêm địa điểm (Photon API)
   const [addingDayId, setAddingDayId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   
-  // States cho Panel Thông tin Địa điểm (Wiki + Reviews)
+  // ================= STATES CHO PANEL TRƯỢT =================
+  const [coverImage, setCoverImage] = useState('');
   const [placeInfo, setPlaceInfo] = useState({ extract: '', loading: false });
   const [placeReviews, setPlaceReviews] = useState([]); 
-  const [infoTab, setInfoTab] = useState('intro'); // intro, reviews
+  const [placePosts, setPlacePosts] = useState([]); 
+  const [infoTab, setInfoTab] = useState('intro');
+
+  // ================= STATES CHO FORM ĐÁNH GIÁ ĐỊA ĐIỂM =================
+  const [newReviewText, setNewReviewText] = useState('');
+  const [newReviewRating, setNewReviewRating] = useState(5);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [visibleReviewsCount, setVisibleReviewsCount] = useState(3);
+
+  // ================= STATES CHO KHỐI MỞ RỘNG (OVERVIEW) =================
+  const [tripNote, setTripNote] = useState('');
+  const [isNoteExpanded, setIsNoteExpanded] = useState(true);
+  const [customSections, setCustomSections] = useState([]); 
+  const [activeMenuId, setActiveMenuId] = useState(null); 
 
   const searchRef = useRef(null);
   const dayRefs = useRef({}); 
 
-  // 1. API: Lấy chi tiết chuyến đi
   const fetchTripDetails = async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) { navigate('/login'); return; }
-      const response = await axios.get(`http://localhost:8080/api/trips/${tripId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await axios.get(`http://localhost:8080/api/trips/${tripId}`, { headers: { Authorization: `Bearer ${token}` } });
       setTrip(response.data);
-    } catch (err) {
-      setError(err.response?.data || 'Lỗi máy chủ');
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { setError('Lỗi máy chủ'); } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchTripDetails();
-  }, [tripId]);
+  useEffect(() => { fetchTripDetails(); }, [tripId]);
 
-  // 2. API: Tìm kiếm địa điểm (Photon API)
   useEffect(() => {
     const fetchPlaces = async () => {
       if (searchQuery.trim().length < 2) { setSuggestions([]); return; }
@@ -125,229 +115,303 @@ const TripDetail = () => {
     return () => clearTimeout(delay);
   }, [searchQuery, addingDayId]);
 
-  // 3. Xử lý thêm địa điểm vào hệ thống
   const handleAddDestination = async (place, dayId) => {
     try {
       const token = localStorage.getItem('token');
       await axios.post(`http://localhost:8080/api/trips/days/${dayId}/destinations`, {
         placeName: place.name, latitude: place.lat, longitude: place.lon, note: place.address, estimatedCost: 0
       }, { headers: { Authorization: `Bearer ${token}` }});
-      setAddingDayId(null); setSearchQuery(''); setSuggestions([]);
-      fetchTripDetails(); 
+      setAddingDayId(null); setSearchQuery(''); setSuggestions([]); fetchTripDetails(); 
     } catch (err) { alert("Lỗi: " + (err.response?.data || err.message)); }
   };
 
-  // 4. Xử lý Click vào Địa điểm -> Mở Panel, Gọi Wikipedia & Cộng đồng
   const handleDestinationClick = async (dest, idx) => {
     setActiveDestination({ ...dest, index: idx + 1 });
     setInfoTab('intro');
     setPlaceInfo({ extract: '', loading: true });
     
-    // Gọi Wikipedia API
+    const fallbackImage = `https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=800&auto=format&fit=crop`; 
+    setCoverImage(fallbackImage);
+
     try {
       const wikiUrl = `https://vi.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(dest.placeName)}&format=json&origin=*`;
       const wikiRes = await fetch(wikiUrl);
       const wikiData = await wikiRes.json();
       const pages = wikiData.query.pages;
       const pageId = Object.keys(pages)[0];
-      
-      if (pageId !== "-1" && pages[pageId].extract) {
-        setPlaceInfo({ extract: pages[pageId].extract, loading: false });
-      } else {
-        setPlaceInfo({ extract: `Không tìm thấy thông tin giới thiệu chi tiết cho ${dest.placeName} trên Wikipedia.`, loading: false });
-      }
-    } catch (e) {
-      setPlaceInfo({ extract: 'Không thể tải thông tin lúc này.', loading: false });
-    }
+      if (pageId !== "-1" && pages[pageId].extract) setPlaceInfo({ extract: pages[pageId].extract, loading: false });
+      else setPlaceInfo({ extract: `Không tìm thấy thông tin trên Wikipedia.`, loading: false });
+    } catch (e) { setPlaceInfo({ extract: 'Không thể tải thông tin lúc này.', loading: false }); }
 
-    // Gọi API Backend lấy Post (Mạng xã hội)
     try {
       const postsRes = await axios.get('http://localhost:8080/api/posts');
-      const relatedReviews = postsRes.data.filter(p => 
-        p.locationName && p.locationName.toLowerCase().includes(dest.placeName.toLowerCase())
-      );
-      setPlaceReviews(relatedReviews);
-    } catch (e) {
-      console.error("Lỗi lấy reviews: ", e);
+      const relatedPosts = postsRes.data.filter(p => p.locationName && p.locationName.toLowerCase().includes(dest.placeName.toLowerCase()));
+      setPlacePosts(relatedPosts);
+      
+      const firstPostWithImg = relatedPosts.find(p => p.imageUrls && p.imageUrls.length > 0);
+      if (firstPostWithImg) setCoverImage(firstPostWithImg.imageUrls[0]);
+    } catch (e) { console.error(e); }
+
+    fetchReviews(dest.placeName);
+  };
+
+  // LOGIC CUSTOM SECTIONS
+  const handleAddCustomSection = () => {
+    setCustomSections([...customSections, { id: Date.now(), title: '', isExpanded: true, places: [] }]);
+  };
+  const handleUpdateSectionTitle = (id, newTitle) => {
+    setCustomSections(customSections.map(sec => sec.id === id ? { ...sec, title: newTitle } : sec));
+  };
+  const handleDeleteSection = (id) => {
+    setCustomSections(customSections.filter(sec => sec.id !== id));
+    setActiveMenuId(null);
+  };
+  
+  // LOGIC ĐÁNH GIÁ ĐỊA ĐIỂM
+  const fetchReviews = async (locName) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`http://localhost:8080/api/place-reviews?locationName=${encodeURIComponent(locName)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      setPlaceReviews(res.data);
+    } catch (e) { console.error(e); }
+  };
+
+  const submitReview = async () => {
+    if (!newReviewText.trim()) return;
+    try {
+      setIsSubmittingReview(true);
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('locationName', activeDestination.placeName);
+      formData.append('rating', newReviewRating);
+      formData.append('content', newReviewText);
+      
+      await axios.post('http://localhost:8080/api/place-reviews', formData, {
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      setNewReviewText('');
+      setNewReviewRating(5);
+      fetchReviews(activeDestination.placeName); 
+    } catch (e) { 
+      alert(e.response?.data || "Lỗi kết nối đến máy chủ. Vui lòng thử lại!"); 
+    } finally { 
+      setIsSubmittingReview(false); 
     }
   };
 
-  // 5. Cuộn màn hình tới Ngày tương ứng
+  const toggleLikeReview = async (reviewId) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`http://localhost:8080/api/place-reviews/${reviewId}/like`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchReviews(activeDestination.placeName); 
+    } catch (e) { alert("Bạn cần đăng nhập để thả tim."); }
+  };
+
   const handleScrollToDay = (dayId) => {
-    setActiveSection('itinerary');
-    setFocusedDayId(dayId);
-    setActiveDestination(null); // Tắt panel khi chuyển sang chế độ xem toàn bộ ngày
-    if (dayRefs.current[dayId]) {
-      dayRefs.current[dayId].scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    setActiveSection('itinerary'); setFocusedDayId(dayId); setActiveDestination(null);
+    if (dayRefs.current[dayId]) dayRefs.current[dayId].scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  // 6. Tính toán điểm để hiển thị trên bản đồ (Lọc theo Ngày)
   const mapDestinations = useMemo(() => {
-    if (focusedDayId) {
-      const focusedDay = trip?.tripDays?.find(day => day.id === focusedDayId);
-      return focusedDay?.destinations || [];
-    }
+    if (focusedDayId) return trip?.tripDays?.find(day => day.id === focusedDayId)?.destinations || [];
     return trip?.tripDays?.flatMap(day => day.destinations || []) || [];
   }, [trip, focusedDayId]);
 
-  // 7. Gọi API OSRM vẽ đường đi thực tế
+  // THỐNG KÊ ĐÁNH GIÁ (Google Maps Style)
+  const reviewStats = useMemo(() => {
+    if (!placeReviews || placeReviews.length === 0) return { avg: 0, total: 0, distribution: {5:0, 4:0, 3:0, 2:0, 1:0} };
+    const stats = { total: placeReviews.length, sum: 0, distribution: {5:0, 4:0, 3:0, 2:0, 1:0} };
+    placeReviews.forEach(r => {
+      stats.sum += r.rating;
+      stats.distribution[r.rating] = (stats.distribution[r.rating] || 0) + 1;
+    });
+    stats.avg = (stats.sum / stats.total).toFixed(1);
+    return stats;
+  }, [placeReviews]);
+
   useEffect(() => {
     const fetchRealRoute = async () => {
-      if (!mapDestinations || mapDestinations.length < 2) {
-        setRoutePositions([]);
-        return;
-      }
+      if (!mapDestinations || mapDestinations.length < 2) { setRoutePositions([]); return; }
       try {
         const coordsStr = mapDestinations.map(d => `${d.longitude},${d.latitude}`).join(';');
         const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
         const response = await fetch(url);
         const data = await response.json();
-        
         if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-          const routeCoords = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
-          setRoutePositions(routeCoords);
-        } else {
-          setRoutePositions(mapDestinations.map(d => [d.latitude, d.longitude]));
-        }
-      } catch (error) {
-        setRoutePositions(mapDestinations.map(d => [d.latitude, d.longitude]));
-      }
+          setRoutePositions(data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]));
+        } else setRoutePositions(mapDestinations.map(d => [d.latitude, d.longitude]));
+      } catch (error) { setRoutePositions(mapDestinations.map(d => [d.latitude, d.longitude])); }
     };
     fetchRealRoute();
   }, [mapDestinations]);
 
-
-  // ================= RENDER GIAO DIỆN =================
   if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500">Đang tải hành trình...</div>;
-  if (error) return <div className="h-screen flex items-center justify-center text-rose-500 font-bold">{String(error)}</div>;
   if (!trip) return null;
+
+  // HÀM AN TOÀN TRÁNH CRASH: Lấy chữ cái đầu của Tên
+  const getInitial = (name) => {
+    if (!name || typeof name !== 'string') return 'U';
+    return name.charAt(0).toUpperCase();
+  };
 
   return (
     <div className="h-screen w-full flex bg-slate-50 font-sans overflow-hidden">
       
-      {/* ================= CỘT 1. SIDEBAR ================= */}
+      {/* 1. SIDEBAR */}
       <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col relative z-20 overflow-hidden`}>
         <div className="p-4 flex items-center gap-3 border-b border-slate-100">
           <Link to="/home" className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 text-slate-600"><ArrowLeft className="w-4 h-4" /></Link>
           <span className="font-bold text-slate-800 truncate flex-1">{trip.destination}</span>
         </div>
-
-        <div className="p-4">
-          <button className="w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white font-bold py-2.5 px-4 rounded-xl flex items-center gap-2 hover:shadow-lg transition-all active:scale-95">
-            <Wand2 className="w-4 h-4" /> AI Assistant
-          </button>
-        </div>
-
         <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-          <button 
-            onClick={() => { setActiveSection('overview'); setFocusedDayId(null); setActiveDestination(null); }} 
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'overview' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
-          >
-             <ChevronDownIcon isOpen={activeSection === 'overview'} /> Overview
-          </button>
-
+          <button onClick={() => { setActiveSection('overview'); setFocusedDayId(null); setActiveDestination(null); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'overview' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}><ChevronDownIcon isOpen={activeSection === 'overview'} /> Overview</button>
           <div className="pt-2">
-            <button 
-              onClick={() => { setActiveSection('itinerary'); setIsItineraryExpanded(!isItineraryExpanded); setFocusedDayId(null); setActiveDestination(null); }} 
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'itinerary' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              <ChevronDownIcon isOpen={isItineraryExpanded} /> Itinerary
-            </button>
+            <button onClick={() => { setActiveSection('itinerary'); setIsItineraryExpanded(!isItineraryExpanded); setFocusedDayId(null); setActiveDestination(null); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'itinerary' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}><ChevronDownIcon isOpen={isItineraryExpanded} /> Itinerary</button>
             {isItineraryExpanded && (
               <div className="pl-9 space-y-1 mt-1">
                 {trip.tripDays?.map((day) => (
-                  <span 
-                    key={day.id} 
-                    onClick={() => handleScrollToDay(day.id)} 
-                    className={`block px-3 py-1.5 text-sm cursor-pointer rounded-md transition-colors ${focusedDayId === day.id ? 'font-bold text-[#FF5645] bg-red-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}
-                  >
-                    Day {day.dayNumber}
-                  </span>
+                  <span key={day.id} onClick={() => handleScrollToDay(day.id)} className={`block px-3 py-1.5 text-sm cursor-pointer rounded-md transition-colors ${focusedDayId === day.id ? 'font-bold text-[#FF5645] bg-red-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}>Day {day.dayNumber}</span>
                 ))}
               </div>
             )}
           </div>
-
           <div className="pt-2">
-            <button 
-              onClick={() => setActiveSection('budget')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'budget' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              <ChevronDownIcon isOpen={activeSection === 'budget'} /> Budget
-            </button>
+            <button onClick={() => setActiveSection('budget')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'budget' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}><ChevronDownIcon isOpen={activeSection === 'budget'} /> Budget</button>
           </div>
-        </div>
-
-        <div className="p-4 border-t border-slate-100">
-          <button onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm font-medium">
-            <ChevronLeft className="w-4 h-4" /> Hide sidebar
-          </button>
         </div>
       </div>
 
-      {!isSidebarOpen && (
-        <div className="absolute top-4 left-4 z-30">
-          <button onClick={() => setIsSidebarOpen(true)} className="h-10 w-10 bg-white shadow-lg border border-slate-200 rounded-full flex items-center justify-center text-slate-600 hover:text-[#FF5645] transition-colors">
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-      )}
-
-      {/* ================= CỘT 2. MAIN CONTENT (NỘI DUNG CHÍNH) ================= */}
+      {/* 2. MAIN CONTENT */}
       <div className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-y-auto scroll-smooth">
-        <div className="absolute top-0 right-0 left-0 p-4 flex justify-end gap-3 z-20 pointer-events-none">
-          <div className="pointer-events-auto flex gap-2">
-            <button className="bg-white/90 backdrop-blur text-slate-800 font-bold text-sm px-4 py-2 rounded-full shadow-sm border border-slate-200 flex items-center gap-2 hover:bg-white transition-colors">
-              <Share2 className="w-4 h-4" /> Share
-            </button>
-            <button className="bg-slate-900 text-white font-bold text-sm px-4 py-2 rounded-full shadow-sm hover:bg-slate-800 transition-colors">
-              Plan trip ▼
-            </button>
-          </div>
-        </div>
-
+        
         {/* --- TAB 1: OVERVIEW --- */}
         {activeSection === 'overview' && (
           <div className="pb-20">
             <div className="h-[300px] w-full relative bg-slate-800">
-              <img src={`https://source.unsplash.com/1200x600/?${trip.destination || 'vietnam'}`} alt="Cover" className="w-full h-full object-cover opacity-80" onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1200&auto=format&fit=crop'; }}/>
+              <img src={`https://source.unsplash.com/1200x600/?${encodeURIComponent(trip.destination || 'vietnam')}`} alt="Cover" className="w-full h-full object-cover opacity-80" />
             </div>
             <div className="relative -mt-16 mx-auto max-w-4xl px-4 sm:px-8">
               <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-100 flex flex-col sm:flex-row sm:items-end justify-between">
                 <div>
                   <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">{trip.title}</h1>
-                  <div className="flex items-center text-sm font-semibold text-slate-500 gap-2">
-                    <Calendar className="w-4 h-4 text-slate-400"/> {trip.startDate} — {trip.endDate || 'No end date'}
-                  </div>
+                  <div className="flex items-center text-sm font-semibold text-slate-500 gap-2"><Calendar className="w-4 h-4 text-slate-400"/> {trip.startDate} — {trip.endDate || 'No end date'}</div>
                 </div>
+                {/* Đã bọc thép hàm lấy chữ cái đầu */}
                 <div className="flex items-center gap-2 mt-4 sm:mt-0">
-                  <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 border border-slate-200">{trip.user?.fullName?.charAt(0).toUpperCase() || 'U'}</div>
+                  <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 border border-slate-200">
+                    {getInitial(trip.user?.fullName)}
+                  </div>
                   <button className="h-10 w-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-500 hover:bg-slate-100 border border-slate-200 border-dashed"><Users className="w-4 h-4" /></button>
                 </div>
               </div>
             </div>
 
             <div className="mx-auto max-w-4xl px-4 sm:px-8 mt-12">
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2"><ChevronDownIcon isOpen={true} /> Explore</h2>
-                <button className="bg-[#FF5645] hover:bg-[#E04B3B] text-white text-sm font-bold px-4 py-2 rounded-full flex items-center gap-2 transition-colors"><Search className="w-4 h-4" /> Browse all</button>
+              
+              {/* === PHẦN 1: GHI CHÚ (NOTES) === */}
+              <div className="mb-10">
+                <div className="flex items-center justify-between mb-3 group cursor-pointer" onClick={() => setIsNoteExpanded(!isNoteExpanded)}>
+                  <h3 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+                    <ChevronDownIcon isOpen={isNoteExpanded} /> Notes
+                  </h3>
+                  <button className="p-1 rounded hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <MoreHorizontal className="w-5 h-5 text-slate-400" />
+                  </button>
+                </div>
+                
+                {isNoteExpanded && (
+                  <div className="pl-6">
+                    <textarea 
+                      value={tripNote}
+                      onChange={(e) => setTripNote(e.target.value)}
+                      placeholder="Write or paste anything here: how to get around, tips and tricks"
+                      className="w-full bg-slate-100/50 hover:bg-slate-100 rounded-xl p-4 text-sm text-slate-700 outline-none border border-transparent focus:border-slate-300 focus:bg-white transition-all resize-none min-h-[100px]"
+                    />
+                  </div>
+                )}
               </div>
 
-              <div className="flex overflow-x-auto gap-5 pb-6 snap-x">
-                {MOCK_EXPLORE_PLACES.map(place => (
-                  <div key={place.id} className="min-w-[260px] sm:min-w-[280px] bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow snap-start">
-                    <img src={place.image} alt={place.title} className="h-36 w-full object-cover" />
-                    <div className="p-4">
-                      <h3 className="font-bold text-slate-900 leading-tight mb-1">{place.title}</h3>
-                      <p className="text-sm text-slate-500 mb-4">{place.desc}</p>
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400"><Compass className="w-3.5 h-3.5 text-[#FF5645]" /> {place.provider}</div>
+              <hr className="border-slate-100 mb-10" />
+
+              {/* === PHẦN 2: CÁC KHỐI CUSTOM SECTIONS === */}
+              {customSections.map((section) => (
+                <div key={section.id} className="mb-10">
+                  <div className="flex items-center justify-between mb-3 relative group">
+                    <div className="flex items-center gap-2 flex-1">
+                      <button 
+                        onClick={() => setCustomSections(customSections.map(s => s.id === section.id ? {...s, isExpanded: !s.isExpanded} : s))} 
+                        className="text-slate-400 hover:text-slate-700 transition-colors"
+                      >
+                        <ChevronDownIcon isOpen={section.isExpanded} />
+                      </button>
+                      <input 
+                        type="text"
+                        value={section.title}
+                        onChange={(e) => handleUpdateSectionTitle(section.id, e.target.value)}
+                        placeholder='Thêm tiêu đề (VD: "Nhà hàng cần thử")'
+                        className="text-xl font-extrabold text-slate-800 focus:text-slate-900 placeholder:text-slate-300 bg-transparent outline-none flex-1 border-b border-transparent focus:border-slate-300 transition-colors"
+                      />
+                    </div>
+                    
+                    {/* Nút 3 chấm mở Menu xóa (Tự động hiện khi hover vào vùng section) */}
+                    <div className="relative opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={() => setActiveMenuId(activeMenuId === section.id ? null : section.id)}
+                        className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+                      >
+                        <MoreHorizontal className="w-5 h-5" />
+                      </button>
+                      
+                      {activeMenuId === section.id && (
+                        <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-xl border border-slate-100 py-1.5 z-50 animate-fade-in overflow-hidden">
+                          <button 
+                            onClick={() => handleDeleteSection(section.id)}
+                            className="w-full text-left px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50 transition-colors"
+                          >
+                            Xóa danh sách này
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
+                  
+                  {section.isExpanded && (
+                    <div className="pl-7">
+                      {/* Ô thêm địa điểm (Đã bỏ 2 nút và đổi màu sáng hơn) */}
+                      <div className="flex items-center gap-3 bg-white hover:bg-slate-50 rounded-xl px-4 py-3 border border-slate-200 shadow-sm transition-all cursor-text focus-within:ring-2 focus-within:ring-cyan-500/20 focus-within:border-cyan-500">
+                        <MapPin className="w-5 h-5 text-slate-400" />
+                        <input 
+                          type="text" 
+                          placeholder="Thêm địa điểm vào danh sách..." 
+                          className="bg-transparent text-sm text-slate-800 outline-none flex-1 font-medium placeholder:font-normal placeholder:text-slate-400" 
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* === NÚT TẠO SECTION MỚI === */}
+              <div className="flex items-center gap-4 mb-12 group">
+                <hr className="flex-1 border-slate-200" />
+                <button 
+                  onClick={(e) => {
+                    e.preventDefault(); // Chống reload trang ngoài ý muốn
+                    handleAddCustomSection();
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 transition-all active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm font-bold">Thêm tiêu đề mới</span>
+                </button>
+                <hr className="flex-1 border-slate-200" />
               </div>
-              
-              {/* Widgets Đặt phòng và Đánh giá (nếu có) */}
+
+              {/* === PHẦN 3: WIDGET ĐẶT PHÒNG & ĐÁNH GIÁ CHUYẾN ĐI === */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mt-4 mb-10">
                 <div className="sm:col-span-2 bg-slate-100/50 rounded-2xl p-5 border border-slate-200/60">
                   <h3 className="font-bold text-slate-900 mb-4">Reservations and attachments</h3>
@@ -381,10 +445,7 @@ const TripDetail = () => {
             <div className="space-y-8">
               {trip.tripDays?.map((day) => (
                 <div key={day.id} ref={el => dayRefs.current[day.id] = el} className={`bg-white border rounded-3xl p-6 shadow-sm transition-all ${focusedDayId === day.id ? 'border-[#FF5645] ring-4 ring-[#FF5645]/10' : 'border-slate-200'}`}>
-                  <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-3 mb-6">
-                    <span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Day {day.dayNumber}</span>
-                    <span className="text-slate-500">{day.dayDate}</span>
-                  </h3>
+                  <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-3 mb-6"><span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Day {day.dayNumber}</span><span className="text-slate-500">{day.dayDate}</span></h3>
                   
                   <div className="space-y-4 mb-4">
                     {(!day.destinations || day.destinations.length === 0) ? (
@@ -402,9 +463,7 @@ const TripDetail = () => {
                             className={`flex gap-4 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-colors ${isActive ? 'bg-orange-50' : 'hover:bg-slate-50'}`}
                           >
                             <div className="flex flex-col items-center mt-1">
-                              <div className={`w-8 h-8 rounded-full text-white text-sm font-bold flex items-center justify-center shadow-sm transition-all ${isActive ? 'bg-slate-900 ring-4 ring-[#FF5645]/20 scale-110' : 'bg-[#FF5645]'}`}>
-                                {idx + 1}
-                              </div>
+                              <div className={`w-8 h-8 rounded-full text-white text-sm font-bold flex items-center justify-center shadow-sm transition-all ${isActive ? 'bg-slate-900 ring-4 ring-[#FF5645]/20 scale-110' : 'bg-[#FF5645]'}`}>{idx + 1}</div>
                               {idx !== day.destinations.length - 1 && <div className="w-0.5 h-10 bg-slate-200 my-1"></div>}
                             </div>
                             <div className={`flex-1 p-4 rounded-2xl border transition-all ${isActive ? 'bg-white border-[#FF5645] shadow-md' : 'bg-white border-slate-200 group-hover:border-[#FF5645]/50'}`}>
@@ -461,75 +520,217 @@ const TripDetail = () => {
       <div className="hidden md:block w-1/3 lg:w-[45%] relative z-0 border-l border-slate-200">
         
         {/* PANEL TRƯỢT (NỔI TRÊN BẢN ĐỒ) */}
-        <div className={`absolute top-4 left-4 bottom-4 w-96 bg-white rounded-3xl shadow-2xl z-[1000] border border-slate-100 flex flex-col overflow-hidden transition-transform duration-500 ease-in-out ${activeDestination ? 'translate-x-0 opacity-100' : '-translate-x-[120%] opacity-0'}`}>
+        <div className={`absolute top-4 left-4 bottom-4 w-[400px] bg-white rounded-3xl shadow-2xl z-[1000] border border-slate-100 flex flex-col overflow-hidden transition-transform duration-500 ease-in-out ${activeDestination ? 'translate-x-0 opacity-100' : '-translate-x-[120%] opacity-0'}`}>
           {activeDestination && (
             <>
-              {/* Ảnh bìa Panel */}
-              <div className="relative h-48 bg-slate-800 flex-shrink-0">
-                <img src={`https://source.unsplash.com/800x600/?${activeDestination.placeName}`} alt="Cover" className="w-full h-full object-cover opacity-80" />
-                <button onClick={() => setActiveDestination(null)} className="absolute top-4 right-4 h-8 w-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 backdrop-blur">
-                  <X className="w-4 h-4" />
-                </button>
-                <div className="absolute bottom-4 left-4 right-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="bg-[#FF5645] text-white text-xs font-bold px-2 py-0.5 rounded-full">{activeDestination.index}</span>
+              {/* Ảnh bìa Panel (Lấy động từ Tab Bài đăng) */}
+              <div className="relative h-56 bg-slate-800 flex-shrink-0">
+                {coverImage && <img src={coverImage} alt="Cover" className="w-full h-full object-cover opacity-90 transition-opacity" />}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+                <button onClick={() => setActiveDestination(null)} className="absolute top-4 right-4 h-8 w-8 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/40 backdrop-blur transition-colors"><X className="w-4 h-4" /></button>
+                <div className="absolute bottom-4 left-5 right-5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="bg-[#FF5645] text-white text-xs font-bold px-2.5 py-0.5 rounded-full shadow-sm">{activeDestination.index}</span>
                   </div>
                   <h3 className="text-2xl font-extrabold text-white text-shadow-md leading-tight">{activeDestination.placeName}</h3>
                 </div>
               </div>
 
               {/* Tabs Menu */}
-              <div className="flex border-b border-slate-100 px-2 flex-shrink-0">
-                <button onClick={() => setInfoTab('intro')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${infoTab === 'intro' ? 'border-[#FF5645] text-[#FF5645]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
-                  Giới thiệu
-                </button>
-                <button onClick={() => setInfoTab('reviews')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-1.5 ${infoTab === 'reviews' ? 'border-[#FF5645] text-[#FF5645]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+              <div className="flex border-b border-slate-100 flex-shrink-0 bg-white">
+                <button onClick={() => setInfoTab('intro')} className={`flex-1 py-3.5 text-sm font-bold border-b-2 transition-colors ${infoTab === 'intro' ? 'border-[#FF5645] text-[#FF5645]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>Giới thiệu</button>
+                <button onClick={() => setInfoTab('reviews')} className={`flex-1 py-3.5 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-1.5 ${infoTab === 'reviews' ? 'border-[#FF5645] text-[#FF5645]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
                   Đánh giá <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md text-[10px]">{placeReviews.length}</span>
+                </button>
+                <button onClick={() => setInfoTab('posts')} className={`flex-1 py-3.5 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-1.5 ${infoTab === 'posts' ? 'border-[#FF5645] text-[#FF5645]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                  Bài đăng <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md text-[10px]">{placePosts.length}</span>
                 </button>
               </div>
 
               {/* Nội dung Tabs */}
-              <div className="flex-1 overflow-y-auto p-5 scroll-smooth">
-                {/* Giới thiệu (Wiki) */}
+              <div className="flex-1 overflow-y-auto p-5 scroll-smooth bg-slate-50">
+                
+                {/* --- 1. GIỚI THIỆU TỪ WIKIPEDIA --- */}
                 {infoTab === 'intro' && (
-                  <div className="space-y-5">
+                  <div className="space-y-4">
                     {placeInfo.loading ? (
-                      <div className="animate-pulse space-y-3"><div className="h-4 bg-slate-200 rounded w-3/4"></div><div className="h-4 bg-slate-200 rounded w-full"></div><div className="h-4 bg-slate-200 rounded w-5/6"></div></div>
+                      <div className="animate-pulse space-y-3"><div className="h-4 bg-slate-200 rounded w-3/4"></div><div className="h-4 bg-slate-200 rounded w-full"></div></div>
                     ) : (
-                      <p className="text-slate-600 text-sm leading-relaxed">{placeInfo.extract}</p>
+                      <p className="text-slate-600 text-[15px] leading-relaxed font-medium">{placeInfo.extract}</p>
                     )}
+                  </div>
+                )}
+
+                {/* --- 2. ĐÁNH GIÁ (RATING & REVIEWS) --- */}
+                {infoTab === 'reviews' && (
+                  <div className="space-y-6">
                     
-                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
-                      <div className="flex items-start gap-3">
-                        <MapPin className="w-5 h-5 text-slate-400 mt-0.5" />
-                        <div><p className="text-sm font-bold text-slate-900">Địa chỉ</p><p className="text-sm text-slate-500">{activeDestination.note || 'Đang cập nhật'}</p></div>
+                    {/* KHU VỰC 1: TÓM TẮT ĐÁNH GIÁ (Google Maps Style) */}
+                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                      <h4 className="font-bold text-slate-900 mb-4 flex items-center justify-between">
+                        Tóm tắt bài đánh giá
+                        <div className="h-5 w-5 rounded-full border border-slate-300 text-slate-400 flex items-center justify-center text-[10px]">?</div>
+                      </h4>
+                      
+                      <div className="flex gap-6 items-center mb-6">
+                        {/* Cột trái: Thanh tiến trình */}
+                        <div className="flex-1 space-y-1.5">
+                          {[5, 4, 3, 2, 1].map(star => {
+                            const count = reviewStats.distribution[star];
+                            const percent = reviewStats.total > 0 ? (count / reviewStats.total) * 100 : 0;
+                            return (
+                              <div key={star} className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                                <span className="w-2">{star}</span>
+                                <div className="h-2 flex-1 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-full bg-amber-400 rounded-full" style={{ width: `${percent}%` }}></div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        
+                        {/* Cột phải: Điểm số trung bình */}
+                        <div className="flex flex-col items-center justify-center w-24">
+                          <span className="text-4xl font-normal text-slate-900">{reviewStats.avg.toString().replace('.', ',')}</span>
+                          <div className="flex gap-0.5 my-1">
+                            {[1, 2, 3, 4, 5].map(s => (
+                              <Star key={s} className={`w-3 h-3 ${s <= Math.round(reviewStats.avg) ? 'fill-amber-400 text-amber-400' : 'fill-slate-100 text-slate-200'}`} />
+                            ))}
+                          </div>
+                          <span className="text-xs font-medium text-sky-700">{reviewStats.total} bài viết</span>
+                        </div>
                       </div>
-                      <div className="flex items-start gap-3">
-                        <Clock className="w-5 h-5 text-slate-400 mt-0.5" />
-                        <div><p className="text-sm font-bold text-slate-900">Giờ mở cửa</p><p className="text-sm text-slate-500">Mở cửa cả ngày (Nguồn: Cộng đồng)</p></div>
+
+                      {/* Nút bật Form viết đánh giá */}
+                      {!showReviewForm && (
+                        <div className="flex justify-center border-t border-slate-50 pt-4">
+                          <button 
+                            onClick={() => setShowReviewForm(true)}
+                            className="bg-cyan-50 text-cyan-700 font-medium text-sm px-6 py-2 rounded-full flex items-center gap-2 hover:bg-cyan-100 transition-colors"
+                          >
+                            <MessageSquare className="w-4 h-4" /> Viết bài đánh giá
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* KHU VỰC 2: FORM ĐÁNH GIÁ (Ẩn/Hiện) */}
+                    {showReviewForm && (
+                      <div className="bg-white p-4 rounded-2xl border border-cyan-100 shadow-sm relative animate-fade-in">
+                        <button onClick={() => setShowReviewForm(false)} className="absolute top-2 right-2 p-1 text-slate-400 hover:bg-slate-100 rounded-full"><X className="w-4 h-4"/></button>
+                        <h4 className="text-sm font-bold text-slate-800 mb-2 text-center">Trải nghiệm của bạn?</h4>
+                        <div className="flex gap-1.5 mb-3 justify-center">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star key={star} onClick={() => setNewReviewRating(star)} className={`w-8 h-8 cursor-pointer transition-colors ${star <= newReviewRating ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}`} />
+                          ))}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <textarea 
+                            value={newReviewText} 
+                            onChange={(e) => setNewReviewText(e.target.value)} 
+                            placeholder="Chia sẻ thêm chi tiết (không bắt buộc)..." 
+                            className="w-full bg-slate-50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-cyan-500/20 border border-slate-200 transition-all resize-none h-20" 
+                          />
+                          <div className="flex justify-end mt-1">
+                             <button onClick={() => { submitReview(); setShowReviewForm(false); }} disabled={isSubmittingReview} className="bg-cyan-600 text-white font-bold text-sm px-5 py-2 rounded-full hover:bg-cyan-700 transition-colors disabled:opacity-50 flex items-center gap-2">
+                              {isSubmittingReview ? 'Đang gửi...' : <><Send className="w-4 h-4" /> Đăng</>}
+                            </button>
+                          </div>
+                        </div>
                       </div>
+                    )}
+
+                    {/* KHU VỰC 3: DANH SÁCH ĐÁNH GIÁ (Có Xem thêm) */}
+                    <div className="space-y-0">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-bold text-slate-900 text-lg">Tất cả các bài đánh giá</h4>
+                        <button className="h-8 w-8 rounded-full border border-slate-200 flex items-center justify-center text-cyan-600 hover:bg-slate-50">
+                          <Search className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {placeReviews.length === 0 ? (
+                        <p className="text-center text-sm text-slate-500 py-6">Chưa có đánh giá nào.</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {placeReviews.slice(0, visibleReviewsCount).map(review => (
+                            <div key={review.id} className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
+                              
+                              {/* Đã bọc thép hàm lấy chữ cái đầu */}
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-full bg-cyan-100 text-cyan-700 text-sm font-bold flex items-center justify-center">
+                                    {review.authorAvatar ? <img src={review.authorAvatar} className="w-full h-full rounded-full object-cover"/> : getInitial(review.authorName)}
+                                  </div>
+                                  <div>
+                                    <span className="text-sm font-bold text-slate-900 block leading-none mb-1">{review.authorName}</span>
+                                    <span className="text-[11px] text-slate-500 flex items-center gap-1">Local Guide • 1 bài đánh giá</span>
+                                  </div>
+                                </div>
+                                <button className="text-slate-400 hover:bg-slate-100 p-1 rounded-full"><MoreHorizontal className="w-4 h-4" /></button>
+                              </div>
+
+                              {/* Rating & Date */}
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className="flex gap-0.5">
+                                  {[1,2,3,4,5].map(s => <Star key={s} className={`w-3.5 h-3.5 ${s <= review.rating ? 'fill-amber-400 text-amber-400' : 'fill-slate-100 text-slate-200'}`} />)}
+                                </div>
+                                <span className="text-xs text-slate-500">{new Date(review.createdAt).toLocaleDateString('vi-VN')}</span>
+                              </div>
+
+                              {/* Content */}
+                              <p className="text-[14px] text-slate-700 mb-4 leading-relaxed">{review.content}</p>
+                              
+                              {/* Actions (Thích / Chia sẻ) */}
+                              <div className="flex items-center gap-6 pt-1">
+                                <button onClick={() => toggleLikeReview(review.id)} className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${review.likedByMe ? 'text-cyan-600' : 'text-slate-600 hover:text-slate-900'}`}>
+                                  <svg className={`w-4 h-4 ${review.likedByMe ? 'fill-cyan-600' : 'fill-none stroke-current'}`} viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+                                  Thích {review.likesCount > 0 ? `(${review.likesCount})` : ''}
+                                </button>
+                                <button className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900">
+                                  <Share2 className="w-4 h-4" /> Chia sẻ
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+
+                          {/* Nút Xem thêm */}
+                          {visibleReviewsCount < placeReviews.length && (
+                            <button 
+                              onClick={() => setVisibleReviewsCount(prev => prev + 5)}
+                              className="w-full py-3 mt-2 rounded-full border border-slate-200 text-sm font-semibold text-cyan-700 hover:bg-slate-50 transition-colors"
+                            >
+                              Xem thêm bài đánh giá
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
 
-                {/* Đánh giá (Cộng đồng) */}
-                {infoTab === 'reviews' && (
-                  <div className="space-y-4">
-                    {placeReviews.length === 0 ? (
-                      <div className="text-center py-8"><MessageSquare className="w-10 h-10 text-slate-200 mx-auto mb-2" /><p className="text-sm text-slate-500">Chưa có bài đánh giá nào từ Cộng đồng cho địa điểm này.</p></div>
+                {/* --- 3. BÀI ĐĂNG TỪ MẠNG XÃ HỘI (Lấy từ /api/posts) --- */}
+                {infoTab === 'posts' && (
+                  <div>
+                    {placePosts.length === 0 ? (
+                      <div className="text-center py-8 text-slate-400">
+                        <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p className="text-sm font-medium">Chưa có bài check-in nào.</p>
+                      </div>
                     ) : (
-                      placeReviews.map(review => (
-                        <div key={review.id} className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm mb-3">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center">{review.authorName.charAt(0)}</div>
-                            <span className="text-sm font-bold text-slate-900">{review.authorName}</span>
-                          </div>
-                          <p className="text-sm text-slate-600 mb-3 whitespace-pre-wrap">{review.caption}</p>
-                          {review.imageUrls?.length > 0 && (
-                            <img src={review.imageUrls[0]} className="w-full h-40 object-cover rounded-xl border border-slate-100" alt="Review Media" />
-                          )}
-                        </div>
-                      ))
+                      <div className="grid grid-cols-2 gap-3">
+                        {placePosts.map(post => {
+                          if (!post.imageUrls || post.imageUrls.length === 0) return null;
+                          return (
+                            <div key={post.id} className="relative aspect-[4/5] rounded-2xl overflow-hidden group cursor-pointer shadow-sm border border-slate-200">
+                              <img src={post.imageUrls[0]} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="Checkin" />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 text-white">
+                                <span className="text-xs font-bold truncate drop-shadow-md">@{post.authorName}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
                     )}
                   </div>
                 )}
@@ -560,16 +761,12 @@ const TripDetail = () => {
           ))}
         </MapContainer>
       </div>
-
     </div>
   );
 };
 
-// Icon hỗ trợ cho UI
 const ChevronDownIcon = ({ isOpen }) => (
-  <svg className={`w-4 h-4 transition-transform ${isOpen ? '' : '-rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-  </svg>
+  <svg className={`w-4 h-4 transition-transform ${isOpen ? '' : '-rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
 );
 
 const ReservationIcon = ({ icon, label }) => (
