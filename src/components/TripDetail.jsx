@@ -4,33 +4,48 @@ import axios from 'axios';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import TripReviews from './TripReviews';
+// Nhớ đảm bảo bạn có import component TripReviews nếu dùng ở phần Overview nhé
+import TripReviews from './TripReviews'; 
 import { 
   ArrowLeft, Calendar, MapPin, Plus, 
   Search, X, Navigation, Users, Receipt, 
   Share2, MoreHorizontal, ChevronLeft, ChevronRight,
-  Wand2, Plane, Bed, Car, Train, Paperclip, CheckSquare, Compass
+  Wand2, Plane, Bed, Car, Train, Paperclip, CheckSquare, Compass,
+  Clock, MessageSquare
 } from 'lucide-react';
 
 // ================= COMPONENT HỖ TRỢ BẢN ĐỒ =================
-function MapBounds({ destinations }) {
+function MapBounds({ destinations, activeDestinationId }) {
   const map = useMap();
+  
   useEffect(() => {
-    if (destinations && destinations.length > 0) {
+    // Nếu có một điểm đang được chọn -> Phóng to và căn giữa điểm đó
+    if (activeDestinationId) {
+      const activeDest = destinations.find(d => d.id === activeDestinationId);
+      if (activeDest) {
+        map.flyTo([activeDest.latitude, activeDest.longitude], 16, { animate: true, duration: 1.5 });
+      }
+    } 
+    // Nếu không có điểm nào được chọn, fit toàn bộ bản đồ
+    else if (destinations && destinations.length > 0) {
       const bounds = L.latLngBounds(destinations.map(d => [d.latitude, d.longitude]));
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15, animate: true });
     }
-  }, [destinations, map]);
+  }, [destinations, activeDestinationId, map]);
   return null;
 }
 
-const createCustomMarker = (number) => {
+// Hàm tạo Icon Marker: Phóng to và sáng lên nếu đang được click
+const createCustomMarker = (number, isActive) => {
+  const size = isActive ? 36 : 24;
+  const shadow = isActive ? '0 4px 10px rgba(255, 86, 69, 0.6)' : '0 2px 5px rgba(0,0,0,0.3)';
+  const border = isActive ? '3px solid white' : '2px solid white';
+  
   return L.divIcon({
     className: 'custom-div-icon',
-    html: `<div style="background-color: #FF5645; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">${number}</div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -12]
+    html: `<div style="background-color: #FF5645; color: white; width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: ${isActive ? '16px' : '12px'}; border: ${border}; box-shadow: ${shadow}; transition: all 0.3s ease;">${number}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2]
   });
 };
 
@@ -48,22 +63,30 @@ const TripDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
+  // States Layout
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeSection, setActiveSection] = useState('overview');
   const [isItineraryExpanded, setIsItineraryExpanded] = useState(false);
+  
+  // States Điều hướng & Bản đồ
   const [focusedDayId, setFocusedDayId] = useState(null);
+  const [activeDestination, setActiveDestination] = useState(null);
+  const [routePositions, setRoutePositions] = useState([]);
 
+  // States Thêm địa điểm (Photon API)
   const [addingDayId, setAddingDayId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
   
-  // State lưu tọa độ đường đi thực tế từ OSRM
-  const [routePositions, setRoutePositions] = useState([]);
+  // States cho Panel Thông tin Địa điểm (Wiki + Reviews)
+  const [placeInfo, setPlaceInfo] = useState({ extract: '', loading: false });
+  const [placeReviews, setPlaceReviews] = useState([]); 
+  const [infoTab, setInfoTab] = useState('intro'); // intro, reviews
 
   const searchRef = useRef(null);
   const dayRefs = useRef({}); 
 
+  // 1. API: Lấy chi tiết chuyến đi
   const fetchTripDetails = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -73,8 +96,7 @@ const TripDetail = () => {
       });
       setTrip(response.data);
     } catch (err) {
-      const errorData = err.response?.data;
-      setError(typeof errorData === 'string' ? errorData : 'Lỗi máy chủ: Không thể tải dữ liệu chuyến đi');
+      setError(err.response?.data || 'Lỗi máy chủ');
     } finally {
       setLoading(false);
     }
@@ -84,33 +106,26 @@ const TripDetail = () => {
     fetchTripDetails();
   }, [tripId]);
 
+  // 2. API: Tìm kiếm địa điểm (Photon API)
   useEffect(() => {
     const fetchPlaces = async () => {
       if (searchQuery.trim().length < 2) { setSuggestions([]); return; }
-      setIsSearching(true);
       try {
         const query = encodeURIComponent(searchQuery.trim());
-        const url = `https://photon.komoot.io/api/?q=${query}&limit=5`;
-        const response = await fetch(url);
+        const response = await fetch(`https://photon.komoot.io/api/?q=${query}&limit=5`);
         const data = await response.json();
-        const formattedPlaces = data.features.map(feature => {
-          const prop = feature.properties;
-          return {
-            id: prop.osm_id,
-            name: prop.name || prop.street || prop.city,
-            address: [prop.city, prop.state, prop.country].filter(Boolean).join(', '),
-            lat: feature.geometry.coordinates[1],
-            lon: feature.geometry.coordinates[0]
-          };
-        }).filter(place => place.name);
-        setSuggestions(formattedPlaces);
-      } catch (err) { console.error(err); } 
-      finally { setIsSearching(false); }
+        const formatted = data.features.map(f => {
+          const p = f.properties;
+          return { id: p.osm_id, name: p.name || p.street || p.city, address: [p.city, p.country].filter(Boolean).join(', '), lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
+        }).filter(p => p.name);
+        setSuggestions(formatted);
+      } catch (err) { console.error(err); }
     };
-    const delayDebounceFn = setTimeout(() => { if (addingDayId) fetchPlaces(); }, 500);
-    return () => clearTimeout(delayDebounceFn);
+    const delay = setTimeout(() => { if (addingDayId) fetchPlaces(); }, 500);
+    return () => clearTimeout(delay);
   }, [searchQuery, addingDayId]);
 
+  // 3. Xử lý thêm địa điểm vào hệ thống
   const handleAddDestination = async (place, dayId) => {
     try {
       const token = localStorage.getItem('token');
@@ -122,15 +137,52 @@ const TripDetail = () => {
     } catch (err) { alert("Lỗi: " + (err.response?.data || err.message)); }
   };
 
+  // 4. Xử lý Click vào Địa điểm -> Mở Panel, Gọi Wikipedia & Cộng đồng
+  const handleDestinationClick = async (dest, idx) => {
+    setActiveDestination({ ...dest, index: idx + 1 });
+    setInfoTab('intro');
+    setPlaceInfo({ extract: '', loading: true });
+    
+    // Gọi Wikipedia API
+    try {
+      const wikiUrl = `https://vi.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(dest.placeName)}&format=json&origin=*`;
+      const wikiRes = await fetch(wikiUrl);
+      const wikiData = await wikiRes.json();
+      const pages = wikiData.query.pages;
+      const pageId = Object.keys(pages)[0];
+      
+      if (pageId !== "-1" && pages[pageId].extract) {
+        setPlaceInfo({ extract: pages[pageId].extract, loading: false });
+      } else {
+        setPlaceInfo({ extract: `Không tìm thấy thông tin giới thiệu chi tiết cho ${dest.placeName} trên Wikipedia.`, loading: false });
+      }
+    } catch (e) {
+      setPlaceInfo({ extract: 'Không thể tải thông tin lúc này.', loading: false });
+    }
+
+    // Gọi API Backend lấy Post (Mạng xã hội)
+    try {
+      const postsRes = await axios.get('http://localhost:8080/api/posts');
+      const relatedReviews = postsRes.data.filter(p => 
+        p.locationName && p.locationName.toLowerCase().includes(dest.placeName.toLowerCase())
+      );
+      setPlaceReviews(relatedReviews);
+    } catch (e) {
+      console.error("Lỗi lấy reviews: ", e);
+    }
+  };
+
+  // 5. Cuộn màn hình tới Ngày tương ứng
   const handleScrollToDay = (dayId) => {
     setActiveSection('itinerary');
     setFocusedDayId(dayId);
+    setActiveDestination(null); // Tắt panel khi chuyển sang chế độ xem toàn bộ ngày
     if (dayRefs.current[dayId]) {
       dayRefs.current[dayId].scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
-  // Tối ưu hóa việc lọc danh sách các điểm bằng useMemo
+  // 6. Tính toán điểm để hiển thị trên bản đồ (Lọc theo Ngày)
   const mapDestinations = useMemo(() => {
     if (focusedDayId) {
       const focusedDay = trip?.tripDays?.find(day => day.id === focusedDayId);
@@ -139,7 +191,7 @@ const TripDetail = () => {
     return trip?.tripDays?.flatMap(day => day.destinations || []) || [];
   }, [trip, focusedDayId]);
 
-  // Gọi API OSRM để lấy đường đi thực tế mỗi khi mapDestinations thay đổi
+  // 7. Gọi API OSRM vẽ đường đi thực tế
   useEffect(() => {
     const fetchRealRoute = async () => {
       if (!mapDestinations || mapDestinations.length < 2) {
@@ -147,30 +199,26 @@ const TripDetail = () => {
         return;
       }
       try {
-        // OSRM yêu cầu tọa độ dạng: Lng,Lat;Lng,Lat
         const coordsStr = mapDestinations.map(d => `${d.longitude},${d.latitude}`).join(';');
         const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
-        
         const response = await fetch(url);
         const data = await response.json();
         
         if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-          // GeoJSON trả về Lng, Lat -> Cần đảo lại Lat, Lng cho Leaflet
           const routeCoords = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
           setRoutePositions(routeCoords);
         } else {
-          // Fallback: Nối đường thẳng nếu không tìm thấy đường đi bộ/ô tô
           setRoutePositions(mapDestinations.map(d => [d.latitude, d.longitude]));
         }
       } catch (error) {
-        console.error("Lỗi vẽ đường đi OSRM:", error);
         setRoutePositions(mapDestinations.map(d => [d.latitude, d.longitude]));
       }
     };
-
     fetchRealRoute();
   }, [mapDestinations]);
 
+
+  // ================= RENDER GIAO DIỆN =================
   if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500">Đang tải hành trình...</div>;
   if (error) return <div className="h-screen flex items-center justify-center text-rose-500 font-bold">{String(error)}</div>;
   if (!trip) return null;
@@ -178,12 +226,10 @@ const TripDetail = () => {
   return (
     <div className="h-screen w-full flex bg-slate-50 font-sans overflow-hidden">
       
-      {/* ================= 1. SIDEBAR ================= */}
+      {/* ================= CỘT 1. SIDEBAR ================= */}
       <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col relative z-20 overflow-hidden`}>
         <div className="p-4 flex items-center gap-3 border-b border-slate-100">
-          <Link to="/home" className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors text-slate-600">
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
+          <Link to="/home" className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 text-slate-600"><ArrowLeft className="w-4 h-4" /></Link>
           <span className="font-bold text-slate-800 truncate flex-1">{trip.destination}</span>
         </div>
 
@@ -194,36 +240,29 @@ const TripDetail = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-          <div>
-            <button 
-              onClick={() => { setActiveSection('overview'); setFocusedDayId(null); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'overview' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              <ChevronDownIcon isOpen={true} /> Overview
-            </button>
-          </div>
+          <button 
+            onClick={() => { setActiveSection('overview'); setFocusedDayId(null); setActiveDestination(null); }} 
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'overview' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+             <ChevronDownIcon isOpen={activeSection === 'overview'} /> Overview
+          </button>
 
           <div className="pt-2">
             <button 
-              onClick={() => { 
-                setActiveSection('itinerary'); 
-                setIsItineraryExpanded(!isItineraryExpanded);
-                setFocusedDayId(null); 
-              }}
+              onClick={() => { setActiveSection('itinerary'); setIsItineraryExpanded(!isItineraryExpanded); setFocusedDayId(null); setActiveDestination(null); }} 
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'itinerary' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}
             >
               <ChevronDownIcon isOpen={isItineraryExpanded} /> Itinerary
             </button>
-            
             {isItineraryExpanded && (
               <div className="pl-9 space-y-1 mt-1">
                 {trip.tripDays?.map((day) => (
                   <span 
-                    key={day.id}
-                    onClick={() => handleScrollToDay(day.id)}
+                    key={day.id} 
+                    onClick={() => handleScrollToDay(day.id)} 
                     className={`block px-3 py-1.5 text-sm cursor-pointer rounded-md transition-colors ${focusedDayId === day.id ? 'font-bold text-[#FF5645] bg-red-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}
                   >
-                    Day {day.dayNumber} ({day.dayDate})
+                    Day {day.dayNumber}
                   </span>
                 ))}
               </div>
@@ -255,7 +294,7 @@ const TripDetail = () => {
         </div>
       )}
 
-      {/* ================= 2. MAIN CONTENT ================= */}
+      {/* ================= CỘT 2. MAIN CONTENT (NỘI DUNG CHÍNH) ================= */}
       <div className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-y-auto scroll-smooth">
         <div className="absolute top-0 right-0 left-0 p-4 flex justify-end gap-3 z-20 pointer-events-none">
           <div className="pointer-events-auto flex gap-2">
@@ -268,6 +307,7 @@ const TripDetail = () => {
           </div>
         </div>
 
+        {/* --- TAB 1: OVERVIEW --- */}
         {activeSection === 'overview' && (
           <div className="pb-20">
             <div className="h-[300px] w-full relative bg-slate-800">
@@ -306,11 +346,35 @@ const TripDetail = () => {
                   </div>
                 ))}
               </div>
-              <TripReviews tripId={trip.id} /> 
+              
+              {/* Widgets Đặt phòng và Đánh giá (nếu có) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mt-4 mb-10">
+                <div className="sm:col-span-2 bg-slate-100/50 rounded-2xl p-5 border border-slate-200/60">
+                  <h3 className="font-bold text-slate-900 mb-4">Reservations and attachments</h3>
+                  <div className="flex gap-4 overflow-x-auto pb-2 text-slate-500">
+                    <ReservationIcon icon={<Plane/>} label="Flight" />
+                    <ReservationIcon icon={<Bed/>} label="Lodging" />
+                    <ReservationIcon icon={<Car/>} label="Rental car" />
+                    <ReservationIcon icon={<Train/>} label="Train" />
+                    <ReservationIcon icon={<Paperclip/>} label="Attachment" />
+                    <ReservationIcon icon={<MoreHorizontal/>} label="Other" />
+                  </div>
+                </div>
+                <div className="bg-slate-100/50 rounded-2xl p-5 border border-slate-200/60 flex flex-col justify-between">
+                  <h3 className="font-bold text-slate-900">Budgeting</h3>
+                  <div>
+                    <p className="text-2xl font-bold text-slate-400">0 ₫</p>
+                    <button onClick={() => setActiveSection('budget')} className="text-sm font-bold text-slate-600 hover:text-slate-900 mt-1">View details</button>
+                  </div>
+                </div>
+              </div>
+
+              {trip.id && <TripReviews tripId={trip.id} />}
             </div>
           </div>
         )}
 
+        {/* --- TAB 2: ITINERARY --- */}
         {activeSection === 'itinerary' && (
           <div className="p-6 sm:p-8 max-w-3xl mx-auto w-full pt-16">
             <h2 className="text-3xl font-extrabold text-slate-900 mb-8">Itinerary</h2>
@@ -321,22 +385,35 @@ const TripDetail = () => {
                     <span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Day {day.dayNumber}</span>
                     <span className="text-slate-500">{day.dayDate}</span>
                   </h3>
+                  
                   <div className="space-y-4 mb-4">
                     {(!day.destinations || day.destinations.length === 0) ? (
-                      <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-2xl"><CheckSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-400 font-medium">Bạn chưa thêm địa điểm nào.</p></div>
+                      <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-2xl">
+                        <CheckSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="text-sm text-slate-400 font-medium">Bạn chưa thêm địa điểm nào.</p>
+                      </div>
                     ) : (
-                      day.destinations.map((dest, idx) => (
-                        <div key={dest.id} className="flex gap-4 items-start group">
-                          <div className="flex flex-col items-center mt-1">
-                            <div className="w-8 h-8 rounded-full bg-[#FF5645] text-white text-sm font-bold flex items-center justify-center shadow-sm">{idx + 1}</div>
-                            {idx !== day.destinations.length - 1 && <div className="w-0.5 h-10 bg-slate-200 my-1"></div>}
+                      day.destinations.map((dest, idx) => {
+                        const isActive = activeDestination?.id === dest.id;
+                        return (
+                          <div 
+                            key={dest.id} 
+                            onClick={() => handleDestinationClick(dest, idx)} 
+                            className={`flex gap-4 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-colors ${isActive ? 'bg-orange-50' : 'hover:bg-slate-50'}`}
+                          >
+                            <div className="flex flex-col items-center mt-1">
+                              <div className={`w-8 h-8 rounded-full text-white text-sm font-bold flex items-center justify-center shadow-sm transition-all ${isActive ? 'bg-slate-900 ring-4 ring-[#FF5645]/20 scale-110' : 'bg-[#FF5645]'}`}>
+                                {idx + 1}
+                              </div>
+                              {idx !== day.destinations.length - 1 && <div className="w-0.5 h-10 bg-slate-200 my-1"></div>}
+                            </div>
+                            <div className={`flex-1 p-4 rounded-2xl border transition-all ${isActive ? 'bg-white border-[#FF5645] shadow-md' : 'bg-white border-slate-200 group-hover:border-[#FF5645]/50'}`}>
+                              <h4 className={`font-bold text-base transition-colors ${isActive ? 'text-[#FF5645]' : 'text-slate-900'}`}>{dest.placeName}</h4>
+                              {dest.note && <p className="text-sm text-slate-500 mt-1 line-clamp-1">{dest.note}</p>}
+                            </div>
                           </div>
-                          <div className="flex-1 bg-white p-4 rounded-2xl border border-slate-200 group-hover:border-[#FF5645]/50 group-hover:shadow-md transition-all cursor-pointer">
-                            <h4 className="font-bold text-base text-slate-900">{dest.placeName}</h4>
-                            {dest.note && <p className="text-sm text-slate-500 mt-1 line-clamp-1">{dest.note}</p>}
-                          </div>
-                        </div>
-                      ))
+                        )
+                      })
                     )}
                   </div>
 
@@ -370,8 +447,9 @@ const TripDetail = () => {
           </div>
         )}
 
+        {/* --- TAB 3: BUDGET --- */}
         {activeSection === 'budget' && (
-          <div className="p-10 text-center max-w-lg mx-auto">
+          <div className="p-10 text-center max-w-lg mx-auto pt-24">
              <Receipt className="w-16 h-16 text-amber-400 mx-auto mb-4" />
              <h2 className="text-2xl font-extrabold text-slate-900 mb-2">Budgeting</h2>
              <p className="text-slate-500">Tính năng chia tiền đang được xây dựng...</p>
@@ -379,26 +457,106 @@ const TripDetail = () => {
         )}
       </div>
 
-      {/* ================= 3. BẢN ĐỒ ================= */}
-      <div className="hidden md:block w-1/3 lg:w-[35%] relative z-0 border-l border-slate-200">
-        <MapContainer center={[16.047079, 108.206230]} zoom={5} style={{ height: '100%', width: '100%' }} zoomControl={true}>
+      {/* ================= CỘT 3. BẢN ĐỒ VÀ PANEL CHI TIẾT ĐỊA ĐIỂM ================= */}
+      <div className="hidden md:block w-1/3 lg:w-[45%] relative z-0 border-l border-slate-200">
+        
+        {/* PANEL TRƯỢT (NỔI TRÊN BẢN ĐỒ) */}
+        <div className={`absolute top-4 left-4 bottom-4 w-96 bg-white rounded-3xl shadow-2xl z-[1000] border border-slate-100 flex flex-col overflow-hidden transition-transform duration-500 ease-in-out ${activeDestination ? 'translate-x-0 opacity-100' : '-translate-x-[120%] opacity-0'}`}>
+          {activeDestination && (
+            <>
+              {/* Ảnh bìa Panel */}
+              <div className="relative h-48 bg-slate-800 flex-shrink-0">
+                <img src={`https://source.unsplash.com/800x600/?${activeDestination.placeName}`} alt="Cover" className="w-full h-full object-cover opacity-80" />
+                <button onClick={() => setActiveDestination(null)} className="absolute top-4 right-4 h-8 w-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 backdrop-blur">
+                  <X className="w-4 h-4" />
+                </button>
+                <div className="absolute bottom-4 left-4 right-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-[#FF5645] text-white text-xs font-bold px-2 py-0.5 rounded-full">{activeDestination.index}</span>
+                  </div>
+                  <h3 className="text-2xl font-extrabold text-white text-shadow-md leading-tight">{activeDestination.placeName}</h3>
+                </div>
+              </div>
+
+              {/* Tabs Menu */}
+              <div className="flex border-b border-slate-100 px-2 flex-shrink-0">
+                <button onClick={() => setInfoTab('intro')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${infoTab === 'intro' ? 'border-[#FF5645] text-[#FF5645]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                  Giới thiệu
+                </button>
+                <button onClick={() => setInfoTab('reviews')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-1.5 ${infoTab === 'reviews' ? 'border-[#FF5645] text-[#FF5645]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                  Đánh giá <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md text-[10px]">{placeReviews.length}</span>
+                </button>
+              </div>
+
+              {/* Nội dung Tabs */}
+              <div className="flex-1 overflow-y-auto p-5 scroll-smooth">
+                {/* Giới thiệu (Wiki) */}
+                {infoTab === 'intro' && (
+                  <div className="space-y-5">
+                    {placeInfo.loading ? (
+                      <div className="animate-pulse space-y-3"><div className="h-4 bg-slate-200 rounded w-3/4"></div><div className="h-4 bg-slate-200 rounded w-full"></div><div className="h-4 bg-slate-200 rounded w-5/6"></div></div>
+                    ) : (
+                      <p className="text-slate-600 text-sm leading-relaxed">{placeInfo.extract}</p>
+                    )}
+                    
+                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
+                      <div className="flex items-start gap-3">
+                        <MapPin className="w-5 h-5 text-slate-400 mt-0.5" />
+                        <div><p className="text-sm font-bold text-slate-900">Địa chỉ</p><p className="text-sm text-slate-500">{activeDestination.note || 'Đang cập nhật'}</p></div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <Clock className="w-5 h-5 text-slate-400 mt-0.5" />
+                        <div><p className="text-sm font-bold text-slate-900">Giờ mở cửa</p><p className="text-sm text-slate-500">Mở cửa cả ngày (Nguồn: Cộng đồng)</p></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Đánh giá (Cộng đồng) */}
+                {infoTab === 'reviews' && (
+                  <div className="space-y-4">
+                    {placeReviews.length === 0 ? (
+                      <div className="text-center py-8"><MessageSquare className="w-10 h-10 text-slate-200 mx-auto mb-2" /><p className="text-sm text-slate-500">Chưa có bài đánh giá nào từ Cộng đồng cho địa điểm này.</p></div>
+                    ) : (
+                      placeReviews.map(review => (
+                        <div key={review.id} className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm mb-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center">{review.authorName.charAt(0)}</div>
+                            <span className="text-sm font-bold text-slate-900">{review.authorName}</span>
+                          </div>
+                          <p className="text-sm text-slate-600 mb-3 whitespace-pre-wrap">{review.caption}</p>
+                          {review.imageUrls?.length > 0 && (
+                            <img src={review.imageUrls[0]} className="w-full h-40 object-cover rounded-xl border border-slate-100" alt="Review Media" />
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* BẢN ĐỒ LEAFLET CHÍNH */}
+        <MapContainer center={[16.047079, 108.206230]} zoom={5} style={{ height: '100%', width: '100%' }} zoomControl={false}>
           <TileLayer url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}" attribution='&copy; Google Maps' />
-          <MapBounds destinations={mapDestinations} />
           
-          {/* Vẽ đường đi thực tế từ API OSRM */}
+          <MapBounds destinations={mapDestinations} activeDestinationId={activeDestination?.id} />
+          
+          {/* Đường vẽ thực tế (OSRM) */}
           {routePositions.length > 1 && (
             <Polyline positions={routePositions} color="#FF5645" weight={4} opacity={0.8} />
           )}
           
+          {/* Cắm cờ các điểm đến */}
           {mapDestinations.map((dest, idx) => (
-            <Marker key={dest.id} position={[dest.latitude, dest.longitude]} icon={createCustomMarker(idx + 1)}>
-              <Popup className="custom-popup rounded-xl">
-                <div className="font-sans min-w-[150px]">
-                  <h3 className="font-bold text-slate-900 text-sm mb-1">{idx + 1}. {dest.placeName}</h3>
-                  {dest.note && <p className="text-xs text-slate-500 line-clamp-2">{dest.note}</p>}
-                </div>
-              </Popup>
-            </Marker>
+            <Marker 
+              key={dest.id} 
+              position={[dest.latitude, dest.longitude]} 
+              icon={createCustomMarker(idx + 1, activeDestination?.id === dest.id)}
+              eventHandlers={{ click: () => handleDestinationClick(dest, idx) }}
+            />
           ))}
         </MapContainer>
       </div>
@@ -407,6 +565,7 @@ const TripDetail = () => {
   );
 };
 
+// Icon hỗ trợ cho UI
 const ChevronDownIcon = ({ isOpen }) => (
   <svg className={`w-4 h-4 transition-transform ${isOpen ? '' : '-rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -415,7 +574,7 @@ const ChevronDownIcon = ({ isOpen }) => (
 
 const ReservationIcon = ({ icon, label }) => (
   <div className="flex flex-col items-center gap-1.5 cursor-pointer hover:text-slate-900 transition-colors">
-    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm">{icon}</div>
+    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm border border-slate-100 text-slate-500">{icon}</div>
     <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
   </div>
 );

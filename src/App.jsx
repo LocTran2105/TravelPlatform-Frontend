@@ -7,7 +7,7 @@ import ResetPassword from './components/ResetPassword';
 import Profile from './components/Profile';
 import PlanTrip from './components/PlanTrip';
 import TripDetail from './components/TripDetail'; // Nhớ import ở trên cùng
-
+import Community from './components/Community';
 // 2. Thêm bộ đánh chặn (Interceptor) của Axios
 axios.interceptors.response.use(
   (response) => {
@@ -56,6 +56,7 @@ function App() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/plan" element={<PlanTrip />} />
         <Route path="/trips/:tripId" element={<TripDetail />} />
+        <Route path="/community" element={<Community />} />
       </Routes>
     </BrowserRouter>
   );
