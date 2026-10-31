@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { createPortal } from 'react-dom';
 import { MapContainer, TileLayer, Marker, useMap, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -10,36 +11,409 @@ import {
   Search, X, Users, Receipt, 
   Share2, MoreHorizontal, ChevronLeft, ChevronRight,
   Wand2, Plane, Bed, Car, Train, Paperclip, CheckSquare, Compass,
-  MessageSquare, Star, Heart, Send, Image as ImageIcon
+  Clock, MessageSquare, Star, Heart, Send, Image as ImageIcon, Play,
+  Utensils, Wine, Landmark, Ticket, ShoppingBag, ShoppingCart, Fuel, Trash2, Pencil
 } from 'lucide-react';
 
 // ================= COMPONENT HỖ TRỢ BẢN ĐỒ =================
-function MapBounds({ destinations, activeDestinationId }) {
+// boundsKey / activeKey là chuỗi/số ổn định: bản đồ chỉ di chuyển khi tập điểm hoặc điểm được chọn THẬT SỰ đổi,
+// không bị giật mỗi lần sửa ghi chú, "Đã đi", giờ... (những thao tác làm đổi tham chiếu mảng nhưng không đổi toạ độ)
+function MapBounds({ points, boundsKey, activePoint, activeKey }) {
   const map = useMap();
+  const pointsRef = useRef(points);
+  pointsRef.current = points;
+
+  // Chọn một địa điểm -> bay tới đó
   useEffect(() => {
-    if (activeDestinationId) {
-      const activeDest = destinations.find(d => d.id === activeDestinationId);
-      if (activeDest) {
-        map.flyTo([activeDest.latitude, activeDest.longitude], 16, { animate: true, duration: 1.5 });
-      }
-    } else if (destinations && destinations.length > 0) {
-      const bounds = L.latLngBounds(destinations.map(d => [d.latitude, d.longitude]));
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15, animate: true });
-    }
-  }, [destinations, activeDestinationId, map]);
+    if (activePoint) map.flyTo(activePoint, 16, { animate: true, duration: 1.5 });
+  }, [activeKey, map]);
+
+  // Không có địa điểm nào được chọn -> khung hình ôm trọn các điểm đang xem
+  useEffect(() => {
+    if (activeKey || pointsRef.current.length === 0) return;
+    map.fitBounds(L.latLngBounds(pointsRef.current), { padding: [50, 50], maxZoom: 15, animate: true });
+  }, [boundsKey, activeKey, map]);
+
   return null;
 }
 
-const createCustomMarker = (number, isActive) => {
-  const size = isActive ? 36 : 24;
-  const shadow = isActive ? '0 4px 10px rgba(255, 86, 69, 0.6)' : '0 2px 5px rgba(0,0,0,0.3)';
-  const border = isActive ? '3px solid white' : '2px solid white';
-  return L.divIcon({
-    className: 'custom-div-icon',
-    html: `<div style="background-color: #FF5645; color: white; width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: ${isActive ? '16px' : '12px'}; border: ${border}; box-shadow: ${shadow}; transition: all 0.3s ease;">${number}</div>`,
-    iconSize: [size, size],
-    iconAnchor: [size/2, size/2]
+// Mỗi ngày một màu (ngày 1 giữ màu thương hiệu) để phân biệt các ngày khi xem toàn bộ chuyến đi
+const DAY_COLORS = ['#FF5645', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6'];
+
+// Cache icon: cùng (số, trạng thái, màu) dùng lại 1 icon, tránh Leaflet vẽ lại marker ở mỗi lần render
+const markerIconCache = new Map();
+const getMarkerIcon = (number, isActive, color) => {
+  const key = `${number}|${isActive}|${color}`;
+  if (!markerIconCache.has(key)) {
+    const size = isActive ? 36 : 24;
+    const shadow = isActive ? `0 4px 10px ${color}99` : '0 2px 5px rgba(0,0,0,0.3)';
+    const border = isActive ? '3px solid white' : '2px solid white';
+    markerIconCache.set(key, L.divIcon({
+      className: 'custom-div-icon',
+      html: `<div style="background-color: ${color}; color: white; width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: ${isActive ? '16px' : '12px'}; border: ${border}; box-shadow: ${shadow}; transition: all 0.3s ease;">${number}</div>`,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2]
+    }));
+  }
+  return markerIconCache.get(key);
+};
+
+// '2026-10-14' -> '14/10'
+const formatDayDate = (d) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || ''));
+  return m ? `${m[3]}/${m[2]}` : (d || '');
+};
+
+// 48 mốc giờ: 00:00, 00:30, ... 23:30
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) =>
+  `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`
+);
+
+// ================= ĐÍNH KÈM ẢNH / VIDEO CHO ĐÁNH GIÁ =================
+// Backend (PlaceReviewService) cũng kiểm tra lại các giới hạn này
+const MAX_MEDIA_FILES = 5;
+const MAX_IMAGE_MB = 10;
+const MAX_VIDEO_MB = 50;
+const MAX_TOTAL_MB = 100; // khớp spring.servlet.multipart.max-request-size
+
+// ================= NGÂN SÁCH & CHI TIÊU =================
+const MAX_MONEY = 1_000_000_000_000; // 1.000 tỷ ₫, khớp giới hạn kiểm tra ở backend
+const formatVND = (n) => `${Number(n || 0).toLocaleString('vi-VN')} ₫`;
+
+// Danh mục chi phí (key khớp với backend: ExpenseService.CATEGORIES)
+const EXPENSE_CATEGORIES = [
+  { key: 'FLIGHTS', label: 'Vé máy bay', Icon: Plane },
+  { key: 'LODGING', label: 'Lưu trú', Icon: Bed },
+  { key: 'CAR_RENTAL', label: 'Thuê xe', Icon: Car },
+  { key: 'TRANSIT', label: 'Di chuyển', Icon: Train },
+  { key: 'FOOD', label: 'Ăn uống', Icon: Utensils },
+  { key: 'DRINKS', label: 'Đồ uống', Icon: Wine },
+  { key: 'SIGHTSEEING', label: 'Tham quan', Icon: Landmark },
+  { key: 'ACTIVITIES', label: 'Hoạt động', Icon: Ticket },
+  { key: 'SHOPPING', label: 'Mua sắm', Icon: ShoppingBag },
+  { key: 'GAS', label: 'Xăng dầu', Icon: Fuel },
+  { key: 'GROCERIES', label: 'Tạp hóa', Icon: ShoppingCart },
+  { key: 'OTHER', label: 'Khác', Icon: Receipt },
+];
+const CATEGORY_MAP = Object.fromEntries(EXPENSE_CATEGORIES.map(c => [c.key, c]));
+
+const EMPTY_EXPENSE_FORM = {
+  amount: '',
+  destinationId: null,   // địa điểm trong lịch trình (không bắt buộc)
+  category: null,        // danh mục (không bắt buộc nếu đã chọn địa điểm)
+  description: '',
+  payerId: null,
+  splitMode: 'none',     // 'none' = không chia, 'equal' = chia đều
+  splitUserIds: [],
+  date: '',              // để trống = hôm nay
+};
+
+const getApiError = (e, fallback) => {
+  if (e.response?.status === 413) return 'Tổng dung lượng tệp vượt giới hạn của máy chủ.';
+  return typeof e.response?.data === 'string' && e.response.data ? e.response.data : fallback;
+};
+
+// Lọc các file hợp lệ trong danh sách vừa chọn; trả về file nhận được + thông báo lỗi (nếu có)
+const validateMediaFiles = (current, incoming) => {
+  const accepted = [];
+  let error = '';
+  let total = current.reduce((sum, f) => sum + f.size, 0);
+  for (const f of incoming) {
+    const isImage = f.type.startsWith('image/');
+    const isVideo = f.type.startsWith('video/');
+    if (!isImage && !isVideo) { error = `"${f.name}" không phải ảnh hoặc video.`; continue; }
+    if (current.length + accepted.length >= MAX_MEDIA_FILES) { error = `Tối đa ${MAX_MEDIA_FILES} tệp cho mỗi đánh giá.`; break; }
+    const limitMB = isVideo ? MAX_VIDEO_MB : MAX_IMAGE_MB;
+    if (f.size > limitMB * 1024 * 1024) { error = `"${f.name}" vượt quá ${limitMB}MB.`; continue; }
+    if (total + f.size > MAX_TOTAL_MB * 1024 * 1024) { error = `Tổng dung lượng tối đa ${MAX_TOTAL_MB}MB.`; continue; }
+    accepted.push(f);
+    total += f.size;
+  }
+  return { accepted, error };
+};
+
+// Ô chọn ảnh/video (dùng ở cả dialog "Đã đi" và form viết đánh giá trong panel)
+const MediaPicker = ({ files, onChange, disabled }) => {
+  const inputRef = useRef(null);
+  const [error, setError] = useState('');
+  const [previews, setPreviews] = useState([]);
+
+  // Tạo URL xem trước trong effect (không dùng useMemo) để không bị thu hồi nhầm khi StrictMode chạy effect 2 lần
+  useEffect(() => {
+    const next = files.map(f => ({ file: f, url: URL.createObjectURL(f), isVideo: f.type.startsWith('video/') }));
+    setPreviews(next);
+    return () => next.forEach(p => URL.revokeObjectURL(p.url));
+  }, [files]);
+
+  const handleSelect = (e) => {
+    const result = validateMediaFiles(files, Array.from(e.target.files || []));
+    setError(result.error);
+    if (result.accepted.length > 0) onChange([...files, ...result.accepted]);
+    e.target.value = ''; // cho phép chọn lại đúng file vừa xoá
+  };
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2">
+        {previews.map((p) => (
+          <div key={p.url} className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
+            {p.isVideo
+              ? <video src={p.url} muted preload="metadata" className="w-full h-full object-cover" />
+              : <img src={p.url} alt="" className="w-full h-full object-cover" />}
+            {p.isVideo && (
+              <div className="absolute inset-0 bg-black/30 flex items-center justify-center pointer-events-none">
+                <Play className="w-5 h-5 text-white fill-white" />
+              </div>
+            )}
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(files.filter(f => f !== p.file))}
+              aria-label="Xoá tệp"
+              className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-50"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ))}
+        {files.length < MAX_MEDIA_FILES && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => inputRef.current?.click()}
+            className="w-20 h-20 rounded-xl border border-dashed border-slate-300 bg-white text-slate-400 hover:text-slate-600 hover:border-slate-400 flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50"
+          >
+            <Plus className="w-5 h-5" />
+            <span className="text-[10px] font-semibold">Ảnh/Video</span>
+          </button>
+        )}
+      </div>
+      <input ref={inputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleSelect} />
+      <p className="text-[11px] text-slate-400 mt-2">Tối đa {MAX_MEDIA_FILES} tệp · ảnh ≤ {MAX_IMAGE_MB}MB · video ≤ {MAX_VIDEO_MB}MB</p>
+      {error && <p className="text-xs text-rose-600 font-medium mt-1">{error}</p>}
+    </div>
+  );
+};
+
+// Lưới ảnh/video dưới mỗi đánh giá trong tab Đánh giá.
+// Bấm vào ảnh sẽ mở trình xem ảnh (lightbox) ngay trong app; video phát trực tiếp trong lưới.
+const ReviewMediaGrid = ({ media }) => {
+  const [viewerIndex, setViewerIndex] = useState(null);
+  const images = useMemo(() => (media || []).filter(m => m.type !== 'VIDEO'), [media]);
+  const isOpen = viewerIndex !== null;
+
+  const closeViewer = () => setViewerIndex(null);
+  const step = (delta) => setViewerIndex(i => (i + delta + images.length) % images.length);
+
+  // Phím tắt: Esc để đóng, ← → để chuyển ảnh
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setViewerIndex(null);
+      else if (e.key === 'ArrowLeft' && images.length > 1) step(-1);
+      else if (e.key === 'ArrowRight' && images.length > 1) step(1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, images.length]);
+
+  if (!media || media.length === 0) return null;
+  const current = isOpen ? images[viewerIndex] : null;
+
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {media.map((m, i) => (
+          m.type === 'VIDEO' ? (
+            <video key={`${i}-${m.url}`} src={m.url} controls preload="metadata" className="w-full aspect-square object-cover rounded-xl bg-black" />
+          ) : (
+            <button
+              key={`${i}-${m.url}`}
+              type="button"
+              onClick={() => setViewerIndex(images.indexOf(m))}
+              className="block aspect-square rounded-xl overflow-hidden bg-slate-100 cursor-zoom-in"
+            >
+              <img src={m.url} alt="Ảnh đánh giá" loading="lazy" className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+            </button>
+          )
+        ))}
+      </div>
+
+      {/* Dùng portal vì panel cha có transform, nếu không thì "fixed" sẽ chỉ phủ trong panel thay vì cả màn hình */}
+      {current && createPortal(
+        <div
+          className="fixed inset-0 z-[4000] bg-black/90 flex items-center justify-center p-4"
+          onClick={closeViewer}
+        >
+          <button
+            onClick={closeViewer}
+            aria-label="Đóng"
+            className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {images.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); step(-1); }}
+              aria-label="Ảnh trước"
+              className="absolute left-4 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+          )}
+
+          <img
+            src={current.url}
+            alt="Ảnh đánh giá"
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
+          />
+
+          {images.length > 1 && (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); step(1); }}
+                aria-label="Ảnh sau"
+                className="absolute right-4 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+              <div className="absolute bottom-5 left-1/2 -translate-x-1/2 text-white/80 text-sm font-semibold">
+                {viewerIndex + 1} / {images.length}
+              </div>
+            </>
+          )}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
+
+// ================= TUYẾN ĐƯỜNG (OSRM) =================
+// Đổi sang server OSRM của bạn khi triển khai thật (server công cộng chỉ để demo, tối đa 1 request/giây)
+const OSRM_BASE_URL = 'https://router.project-osrm.org';
+const OSRM_MIN_INTERVAL_MS = 1000;
+
+const hasCoord = (d) => d.latitude != null && d.longitude != null && Number.isFinite(Number(d.latitude)) && Number.isFinite(Number(d.longitude));
+
+// Khoảng cách đường chim bay (mét) - dùng khi không tìm được đường bộ
+const haversineMeters = (a, b) => {
+  const toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(h));
+};
+
+const formatDistance = (m) => (m >= 1000
+  ? `${(m / 1000).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} km`
+  : `${Math.round(m)} m`);
+
+const formatDuration = (s) => {
+  const minutes = Math.max(1, Math.round(s / 60));
+  if (minutes < 60) return `${minutes} phút`;
+  const h = Math.floor(minutes / 60);
+  const mm = minutes % 60;
+  return mm ? `${h} giờ ${mm} phút` : `${h} giờ`;
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const routeCache = new Map();
+let osrmQueue = Promise.resolve();
+let lastOsrmCall = 0;
+
+// Xếp hàng các request để cách nhau tối thiểu OSRM_MIN_INTERVAL_MS; request đã bị huỷ thì bỏ qua, không chiếm lượt
+const queuedFetch = (url, signal) => {
+  const task = osrmQueue.then(async () => {
+    if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    const wait = lastOsrmCall + OSRM_MIN_INTERVAL_MS - Date.now();
+    if (wait > 0) await sleep(wait);
+    if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    lastOsrmCall = Date.now();
+    return fetch(url, { signal });
   });
+  osrmQueue = task.catch(() => {});
+  return task;
+};
+
+// points: [{ lat, lng }]. Trả về { status: 'ok' | 'nopath' | 'error', positions, legs }
+//  - ok: có đường bộ; nopath: OSRM xác nhận không nối được (vd. đảo); error: lỗi mạng / bị giới hạn tốc độ
+const getRoute = async (points, signal) => {
+  const coords = points.map((p) => `${p.lng},${p.lat}`).join(';');
+  if (routeCache.has(coords)) return routeCache.get(coords);
+  try {
+    const res = await queuedFetch(`${OSRM_BASE_URL}/route/v1/driving/${coords}?overview=full&geometries=geojson`, signal);
+    const data = await res.json();
+    if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+      const r = data.routes[0];
+      const result = {
+        status: 'ok',
+        positions: r.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+        legs: r.legs.map((l) => ({ distance: l.distance, duration: l.duration })),
+      };
+      routeCache.set(coords, result);
+      return result;
+    }
+    if (data.code === 'NoRoute' || data.code === 'NoSegment') {
+      const result = { status: 'nopath' };
+      routeCache.set(coords, result);
+      return result;
+    }
+    return { status: 'error' };
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw e;
+    return { status: 'error' };
+  }
+};
+
+// stops: [{ id, lat, lng }] của MỘT ngày (đã lọc toạ độ hợp lệ, đúng thứ tự).
+// Trả về { segments: [{ positions, approx }], legs: [{ fromId, toId, distance, duration, approx }] }
+const buildDayRoute = async (stops, signal) => {
+  const whole = await getRoute(stops, signal);
+  if (whole.status === 'ok') {
+    return {
+      segments: [{ positions: whole.positions, approx: false }],
+      legs: whole.legs.map((l, i) => ({ fromId: stops[i].id, toId: stops[i + 1].id, distance: l.distance, duration: l.duration, approx: false })),
+    };
+  }
+
+  // Không nối được cả ngày: thử từng chặng để chặng nào đi được vẫn vẽ đường thật, chặng còn lại vẽ đường thẳng nét đứt.
+  // Nếu chỉ là lỗi mạng / bị giới hạn tốc độ thì KHÔNG gọi thêm (tránh dồn request vào server đang quá tải).
+  const retryPerLeg = whole.status === 'nopath' && stops.length > 2;
+  const segments = [];
+  const legs = [];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i];
+    const b = stops[i + 1];
+    const leg = retryPerLeg ? await getRoute([a, b], signal) : { status: 'skipped' };
+    if (leg.status === 'ok') {
+      segments.push({ positions: leg.positions, approx: false });
+      legs.push({ fromId: a.id, toId: b.id, distance: leg.legs[0].distance, duration: leg.legs[0].duration, approx: false });
+    } else {
+      segments.push({ positions: [[a.lat, a.lng], [b.lat, b.lng]], approx: true });
+      legs.push({ fromId: a.id, toId: b.id, distance: haversineMeters(a, b), duration: null, approx: true });
+    }
+  }
+  return { segments, legs };
+};
+// ================= HẾT TUYẾN ĐƯỜNG (OSRM) =================
+
+// Chip "12,4 km · 25 phút" hiện dưới mỗi địa điểm (tới điểm kế tiếp trong ngày)
+const LegChip = ({ leg }) => {
+  if (!leg) return null;
+  return (
+    <div
+      className="flex items-center gap-1.5 mt-3 text-[12px] font-semibold text-slate-400"
+      title={leg.approx ? 'Không tìm được đường bộ, hiển thị khoảng cách đường thẳng' : 'Quãng đường và thời gian lái xe ước tính (chưa tính kẹt xe)'}
+    >
+      <Car className="w-3.5 h-3.5" />
+      {leg.approx
+        ? `≈ ${formatDistance(leg.distance)} · đường thẳng`
+        : `${formatDistance(leg.distance)} · ${formatDuration(leg.duration)}`}
+    </div>
+  );
 };
 
 const TripDetail = () => {
@@ -56,7 +430,7 @@ const TripDetail = () => {
   
   const [focusedDayId, setFocusedDayId] = useState(null);
   const [activeDestination, setActiveDestination] = useState(null);
-  const [routePositions, setRoutePositions] = useState([]);
+  const [routeData, setRouteData] = useState({}); // { [dayId]: { segments, legs, legByFrom } }
 
   const [addingDayId, setAddingDayId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,7 +459,83 @@ const TripDetail = () => {
 
   const searchRef = useRef(null);
   const dayRefs = useRef({}); 
+  const [activeTimePickerDestId, setActiveTimePickerDestId] = useState(null);
 
+  // Panel thông tin bên bản đồ: đóng/mở độc lập với địa điểm đang được chọn
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+
+  // Dialog đánh giá hiện ra sau khi bấm "Đã đi"
+  const [visitDialog, setVisitDialog] = useState(null); // { dest, dayDate }
+  const [visitRating, setVisitRating] = useState(0);
+  const [visitNote, setVisitNote] = useState('');
+  const [visitError, setVisitError] = useState('');
+  const [isSubmittingVisit, setIsSubmittingVisit] = useState(false);
+
+  // Ảnh/video đính kèm (dialog "Đã đi" và form viết đánh giá trong panel)
+  const [visitFiles, setVisitFiles] = useState([]);
+  const [newReviewFiles, setNewReviewFiles] = useState([]);
+  const [uploadPercent, setUploadPercent] = useState(0);
+  const uploadLabel = uploadPercent > 0 && uploadPercent < 100 ? `Đang tải lên ${uploadPercent}%` : 'Đang xử lý...';
+
+  // Ngân sách & chi tiêu
+  const [expenseData, setExpenseData] = useState({ currentUserId: null, members: [], expenses: [] });
+  const [expenseSort, setExpenseSort] = useState('newest');
+  const [expenseDialog, setExpenseDialog] = useState(null); // null | { step: 'form' | 'item' }
+  const [expenseForm, setExpenseForm] = useState(EMPTY_EXPENSE_FORM);
+  const [expenseError, setExpenseError] = useState('');
+  const [showAllDests, setShowAllDests] = useState(false);
+  const [isSavingExpense, setIsSavingExpense] = useState(false);
+  const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
+  const [budgetInput, setBudgetInput] = useState('');
+  const [isSavingBudget, setIsSavingBudget] = useState(false);
+  const [balanceDialog, setBalanceDialog] = useState(null); // null | { loading, data, error }
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+
+  // Mọi địa điểm trong lịch trình (để chọn khi thêm chi phí)
+  const allDestinations = useMemo(() =>
+    (trip?.tripDays || []).flatMap(day =>
+      (day.destinations || []).map(d => ({ id: d.id, placeName: d.placeName, dayNumber: day.dayNumber }))
+    ), [trip]);
+
+  const expenseStats = useMemo(() => {
+    const spent = expenseData.expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const budget = Number(trip?.totalBudget || 0);
+    const byDest = {};
+    const byCategory = {};
+    expenseData.expenses.forEach(e => {
+      const amount = Number(e.amount || 0);
+      if (e.tripDestinationId) byDest[e.tripDestinationId] = (byDest[e.tripDestinationId] || 0) + amount;
+      byCategory[e.category] = (byCategory[e.category] || 0) + amount;
+    });
+    return {
+      spent, budget, byDest, byCategory,
+      remaining: budget - spent,
+      percent: budget > 0 ? Math.round((spent / budget) * 100) : 0,
+    };
+  }, [expenseData.expenses, trip]);
+
+  const sortedExpenses = useMemo(() => {
+    const list = [...expenseData.expenses];
+    const dateKey = (e) => e.expenseDate || '';
+    if (expenseSort === 'oldest') list.sort((a, b) => dateKey(a).localeCompare(dateKey(b)) || a.id - b.id);
+    else if (expenseSort === 'amount') list.sort((a, b) => Number(b.amount) - Number(a.amount));
+    else list.sort((a, b) => dateKey(b).localeCompare(dateKey(a)) || b.id - a.id);
+    return list;
+  }, [expenseData.expenses, expenseSort]);
+
+  const categoryTotals = useMemo(() => {
+    return EXPENSE_CATEGORIES
+      .map(c => ({ ...c, amount: expenseStats.byCategory[c.key] || 0 }))
+      .filter(c => c.amount > 0)
+      .sort((a, b) => b.amount - a.amount)
+      .map(c => ({ ...c, percent: expenseStats.spent > 0 ? Math.round((c.amount / expenseStats.spent) * 100) : 0 }));
+  }, [expenseStats]);
+
+  // Dữ liệu đang chọn trong form "Thêm chi phí"
+  const selectedExpenseDest = allDestinations.find(d => d.id === expenseForm.destinationId) || null;
+  const selectedExpenseCategory = expenseForm.category ? CATEGORY_MAP[expenseForm.category] : null;
+  const splitCount = expenseForm.splitUserIds.length;
+  const splitShare = splitCount > 0 && Number(expenseForm.amount) > 0 ? Math.floor(Number(expenseForm.amount) / splitCount) : 0;
   const fetchTripDetails = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -96,6 +546,27 @@ const TripDetail = () => {
   };
 
   useEffect(() => { fetchTripDetails(); }, [tripId]);
+  useEffect(() => { fetchExpenses(); }, [tripId]);
+
+  useEffect(() => {
+    if (!expenseDialog && !balanceDialog && !breakdownOpen && !budgetDialogOpen) return;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (!isSavingExpense) setExpenseDialog(null);
+      setBalanceDialog(null);
+      setBreakdownOpen(false);
+      setBudgetDialogOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [expenseDialog, balanceDialog, breakdownOpen, budgetDialogOpen, isSavingExpense]);
+
+  useEffect(() => {
+    if (!visitDialog) return;
+    const onKey = (e) => { if (e.key === 'Escape' && !isSubmittingVisit) setVisitDialog(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [visitDialog, isSubmittingVisit]);
 
   useEffect(() => {
     const fetchPlaces = async () => {
@@ -127,6 +598,8 @@ const TripDetail = () => {
 
   const handleDestinationClick = async (dest, idx) => {
     setActiveDestination({ ...dest, index: idx + 1 });
+    setIsPanelOpen(true);
+    setNewReviewFiles([]);
     setInfoTab('intro');
     setPlaceInfo({ extract: '', loading: true });
     
@@ -155,6 +628,220 @@ const TripDetail = () => {
     fetchReviews(dest.placeName);
   };
 
+  // Quản lý trạng thái cập nhật Địa điểm & Đồng bộ với Server
+  const handleUpdateDestProperty = async (dayId, destId, field, value) => {
+    // 1. Chuyển đổi tên field 'time' của API thành 'timeRange' của giao diện
+    const stateField = field === 'time' ? 'timeRange' : field;
+
+    const updatedDays = trip.tripDays.map(day => {
+      if (day.id === dayId) {
+        const updatedDests = day.destinations.map(d => 
+          d.id === destId ? { ...d, [stateField]: value } : d
+        );
+        return { ...day, destinations: updatedDests };
+      }
+      return day;
+    });
+    setTrip({ ...trip, tripDays: updatedDays });
+
+    // 2. Gửi API xuống Server lưu vĩnh viễn
+    try {
+      const token = localStorage.getItem('token');
+      await axios.patch(
+        `http://localhost:8080/api/trips/days/destinations/${destId}`,
+        { field, value },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch (error) {
+      console.error("Lỗi cập nhật địa điểm:", error);
+      alert(getApiError(error, 'Không lưu được thay đổi. Dữ liệu sẽ được tải lại.'));
+      fetchTripDetails(); // rollback về dữ liệu thật từ server
+    }
+  };
+
+  // ================= LOGIC NGÂN SÁCH & CHI TIÊU =================
+  const fetchExpenses = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const res = await axios.get(`http://localhost:8080/api/trips/${tripId}/expenses`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setExpenseData(res.data);
+    } catch (e) {
+      console.error('Lỗi tải chi phí:', e);
+    }
+  };
+
+  // preset.destinationId: mở sẵn với địa điểm đã chọn (từ nút "Thêm chi phí" của địa điểm)
+  const openExpenseDialog = (preset = {}) => {
+    setExpenseForm({
+      ...EMPTY_EXPENSE_FORM,
+      destinationId: preset.destinationId || null,
+      payerId: expenseData.currentUserId,
+      splitUserIds: expenseData.members.map(m => m.userId),
+    });
+    setExpenseError('');
+    setShowAllDests(false);
+    setExpenseDialog({ step: 'form' });
+  };
+
+  const closeExpenseDialog = () => { if (!isSavingExpense) setExpenseDialog(null); };
+  const updateExpenseForm = (patch) => setExpenseForm(f => ({ ...f, ...patch }));
+  const toggleSplitUser = (userId) => setExpenseForm(f => ({
+    ...f,
+    splitUserIds: f.splitUserIds.includes(userId) ? f.splitUserIds.filter(id => id !== userId) : [...f.splitUserIds, userId]
+  }));
+
+  const submitExpense = async () => {
+    const amount = Number(expenseForm.amount);
+    if (!expenseForm.amount || !Number.isFinite(amount) || amount <= 0) { setExpenseError('Vui lòng nhập số tiền lớn hơn 0.'); return; }
+    if (amount > MAX_MONEY) { setExpenseError('Số tiền quá lớn.'); return; }
+    if (!expenseForm.destinationId && !expenseForm.category) { setExpenseError('Hãy chọn mục chi phí (địa điểm hoặc danh mục).'); return; }
+    if (!expenseForm.payerId) { setExpenseError('Vui lòng chọn người trả tiền.'); return; }
+    if (expenseForm.splitMode === 'equal' && expenseForm.splitUserIds.length === 0) { setExpenseError('Hãy chọn ít nhất 1 người để chia tiền.'); return; }
+
+    const payload = {
+      title: selectedExpenseDest ? selectedExpenseDest.placeName : (selectedExpenseCategory ? selectedExpenseCategory.label : null),
+      amount: Math.round(amount),
+      category: expenseForm.category || 'OTHER',
+      description: expenseForm.description.trim() || null,
+      tripDestinationId: expenseForm.destinationId,
+      payerId: expenseForm.payerId,
+      splitUserIds: expenseForm.splitMode === 'equal' ? expenseForm.splitUserIds : [],
+      expenseDate: expenseForm.date || null,
+    };
+
+    try {
+      setIsSavingExpense(true);
+      setExpenseError('');
+      const token = localStorage.getItem('token');
+      await axios.post(`http://localhost:8080/api/trips/${tripId}/expenses`, payload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchExpenses();
+      setExpenseDialog(null);
+    } catch (e) {
+      setExpenseError(getApiError(e, 'Không lưu được khoản chi. Vui lòng thử lại!'));
+    } finally {
+      setIsSavingExpense(false);
+    }
+  };
+
+  const deleteExpense = async (expense) => {
+    if (!window.confirm(`Xóa khoản chi "${expense.title}"?`)) return;
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`http://localhost:8080/api/trips/${tripId}/expenses/${expense.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchExpenses();
+    } catch (e) {
+      alert(getApiError(e, 'Không xóa được khoản chi. Vui lòng thử lại!'));
+    }
+  };
+
+  const openBalanceDialog = async () => {
+    setBalanceDialog({ loading: true, data: null, error: '' });
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`http://localhost:8080/api/trips/${tripId}/expenses/settlement`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setBalanceDialog({ loading: false, data: res.data, error: '' });
+    } catch (e) {
+      setBalanceDialog({ loading: false, data: null, error: getApiError(e, 'Không tính được cân đối nhóm.') });
+    }
+  };
+
+  const saveBudget = async () => {
+    const amount = budgetInput === '' ? 0 : Number(budgetInput);
+    if (!Number.isFinite(amount) || amount < 0) { alert('Ngân sách phải là số không âm.'); return; }
+    if (amount > MAX_MONEY) { alert('Ngân sách quá lớn.'); return; }
+    try {
+      setIsSavingBudget(true);
+      const token = localStorage.getItem('token');
+      await axios.patch(`http://localhost:8080/api/trips/${tripId}/budget`, { totalBudget: amount }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setTrip(prev => ({ ...prev, totalBudget: amount }));
+      setBudgetDialogOpen(false);
+    } catch (e) {
+      alert(getApiError(e, 'Không lưu được ngân sách. Vui lòng thử lại!'));
+    } finally {
+      setIsSavingBudget(false);
+    }
+  };
+
+  // ================= LOGIC "ĐÃ ĐI" + ĐÁNH GIÁ =================
+  // Đánh dấu đã đi NGAY (không phụ thuộc dialog) -> đóng dialog vẫn giữ trạng thái đã đi
+  const handleToggleVisited = (day, dest, isVisited) => {
+    handleUpdateDestProperty(day.id, dest.id, 'isVisited', !isVisited);
+    if (!isVisited) { // chỉ hiện dialog khi chuyển từ chưa đi -> đã đi
+      setVisitRating(0);
+      setVisitNote('');
+      setVisitError('');
+      setVisitFiles([]);
+      setVisitDialog({ dest, dayDate: day.dayDate });
+    }
+  };
+
+  const closeVisitDialog = () => { if (!isSubmittingVisit) setVisitDialog(null); };
+
+  const submitVisitReview = async () => {
+    if (!visitDialog) return;
+    if (visitRating < 1) { setVisitError('Hãy chọn số sao trước khi lưu đánh giá.'); return; }
+    const placeName = visitDialog.dest.placeName;
+    try {
+      setIsSubmittingVisit(true);
+      setVisitError('');
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('locationName', placeName);
+      formData.append('rating', visitRating);
+      formData.append('content', visitNote.trim());
+      visitFiles.forEach(f => formData.append('files', f));
+      setUploadPercent(0);
+      await axios.post('http://localhost:8080/api/place-reviews', formData, {
+        headers: { Authorization: `Bearer ${token}` },
+        onUploadProgress: (ev) => { if (ev.total) setUploadPercent(Math.round((ev.loaded * 100) / ev.total)); }
+      });
+      setVisitDialog(null);
+      setVisitFiles([]);
+      await fetchReviews(placeName);
+      // Mở panel ở tab Đánh giá để người dùng thấy đánh giá vừa gửi
+      setInfoTab('reviews');
+      setIsPanelOpen(true);
+    } catch (e) {
+      setVisitError(getApiError(e, 'Không gửi được đánh giá. Vui lòng thử lại!'));
+    } finally {
+      setIsSubmittingVisit(false);
+    }
+  };
+
+  // ================= LOGIC CHỌN GIỜ =================
+  const [timeDraft, setTimeDraft] = useState({ start: '', end: '', focus: 'start' });
+
+  const openTimePicker = (dest) => {
+    const [start = '', end = ''] = (dest.timeRange || '').split(' - ').map(s => s.trim());
+    setTimeDraft({ start, end, focus: 'start' });
+    setActiveTimePickerDestId(dest.id);
+  };
+
+  const pickTimeSlot = (t) => {
+    setTimeDraft(d => d.focus === 'start'
+      ? { start: t, end: d.end > t ? d.end : '', focus: 'end' } // chọn xong giờ bắt đầu thì nhảy sang giờ kết thúc
+      : { ...d, end: t });
+  };
+
+  const saveTime = (dayId, destId) => {
+    const { start, end } = timeDraft;
+    if (!start) { alert('Vui lòng chọn giờ bắt đầu'); return; }
+    if (end && end <= start) { alert('Giờ kết thúc phải sau giờ bắt đầu'); return; }
+    handleUpdateDestProperty(dayId, destId, 'time', end ? `${start} - ${end}` : start);
+    setActiveTimePickerDestId(null);
+  };
+
   // LOGIC CUSTOM SECTIONS
   const handleAddCustomSection = () => {
     setCustomSections([...customSections, { id: Date.now(), title: '', isExpanded: true, places: [] }]);
@@ -179,25 +866,33 @@ const TripDetail = () => {
   };
 
   const submitReview = async () => {
-    if (!newReviewText.trim()) return;
+    if (!newReviewText.trim() && newReviewFiles.length === 0) {
+      alert('Hãy viết nội dung hoặc đính kèm ảnh/video trước khi đăng.');
+      return;
+    }
     try {
       setIsSubmittingReview(true);
+      setUploadPercent(0);
       const token = localStorage.getItem('token');
       const formData = new FormData();
       formData.append('locationName', activeDestination.placeName);
       formData.append('rating', newReviewRating);
-      formData.append('content', newReviewText);
-      
+      formData.append('content', newReviewText.trim());
+      newReviewFiles.forEach(f => formData.append('files', f));
+
       await axios.post('http://localhost:8080/api/place-reviews', formData, {
-        headers: { Authorization: `Bearer ${token}` } 
+        headers: { Authorization: `Bearer ${token}` },
+        onUploadProgress: (ev) => { if (ev.total) setUploadPercent(Math.round((ev.loaded * 100) / ev.total)); }
       });
       setNewReviewText('');
       setNewReviewRating(5);
-      fetchReviews(activeDestination.placeName); 
-    } catch (e) { 
-      alert(e.response?.data || "Lỗi kết nối đến máy chủ. Vui lòng thử lại!"); 
-    } finally { 
-      setIsSubmittingReview(false); 
+      setNewReviewFiles([]);
+      setShowReviewForm(false); // chỉ đóng form khi gửi thành công, lỗi thì giữ nguyên nội dung đã nhập
+      fetchReviews(activeDestination.placeName);
+    } catch (e) {
+      alert(getApiError(e, "Lỗi kết nối đến máy chủ. Vui lòng thử lại!"));
+    } finally {
+      setIsSubmittingReview(false);
     }
   };
 
@@ -216,10 +911,30 @@ const TripDetail = () => {
     if (dayRefs.current[dayId]) dayRefs.current[dayId].scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const mapDestinations = useMemo(() => {
-    if (focusedDayId) return trip?.tripDays?.find(day => day.id === focusedDayId)?.destinations || [];
-    return trip?.tripDays?.flatMap(day => day.destinations || []) || [];
-  }, [trip, focusedDayId]);
+  // Các điểm có toạ độ hợp lệ của từng ngày. `number` = số thứ tự TRONG NGÀY (khớp với số hiện trong danh sách).
+  const routeDays = useMemo(() => (trip?.tripDays || []).map((day, dayIndex) => ({
+    id: day.id,
+    color: DAY_COLORS[dayIndex % DAY_COLORS.length],
+    stops: (day.destinations || [])
+      .map((dest, i) => ({ dest, id: dest.id, number: i + 1, lat: Number(dest.latitude), lng: Number(dest.longitude) }))
+      .filter(s => hasCoord(s.dest)),
+  })), [trip]);
+
+  // Chuỗi đại diện cho toạ độ + thứ tự của mọi ngày: chỉ đổi khi tuyến đường thật sự cần tính lại
+  const routeKey = useMemo(
+    () => routeDays.map(d => `${d.id}:${d.stops.map(s => `${s.id}@${s.lat},${s.lng}`).join('|')}`).join('||'),
+    [routeDays]
+  );
+
+  // Các điểm đang hiển thị trên bản đồ (1 ngày được chọn, hoặc tất cả các ngày)
+  const mapStops = useMemo(() => routeDays
+    .filter(d => !focusedDayId || d.id === focusedDayId)
+    .flatMap(d => d.stops.map(s => ({ ...s, color: d.color }))), [routeDays, focusedDayId]);
+
+  const boundsKey = useMemo(
+    () => `${focusedDayId || 'all'}#${mapStops.map(s => `${s.id}@${s.lat},${s.lng}`).join('|')}`,
+    [mapStops, focusedDayId]
+  );
 
   // THỐNG KÊ ĐÁNH GIÁ (Google Maps Style)
   const reviewStats = useMemo(() => {
@@ -233,21 +948,32 @@ const TripDetail = () => {
     return stats;
   }, [placeReviews]);
 
+  // Tính tuyến đường: mỗi ngày 1 request, chỉ chạy lại khi toạ độ/thứ tự thật sự đổi (routeKey) hoặc đổi ngày đang xem.
+  // Ngày đang xem được tính trước; request cũ bị huỷ nên kết quả cũ không thể ghi đè kết quả mới.
   useEffect(() => {
-    const fetchRealRoute = async () => {
-      if (!mapDestinations || mapDestinations.length < 2) { setRoutePositions([]); return; }
-      try {
-        const coordsStr = mapDestinations.map(d => `${d.longitude},${d.latitude}`).join(';');
-        const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson`;
-        const response = await fetch(url);
-        const data = await response.json();
-        if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-          setRoutePositions(data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]));
-        } else setRoutePositions(mapDestinations.map(d => [d.latitude, d.longitude]));
-      } catch (error) { setRoutePositions(mapDestinations.map(d => [d.latitude, d.longitude])); }
-    };
-    fetchRealRoute();
-  }, [mapDestinations]);
+    if (routeDays.length === 0) return;
+    const controller = new AbortController();
+    const ordered = focusedDayId
+      ? [...routeDays.filter(d => d.id === focusedDayId), ...routeDays.filter(d => d.id !== focusedDayId)]
+      : routeDays;
+
+    (async () => {
+      for (const d of ordered) {
+        try {
+          const result = d.stops.length >= 2
+            ? await buildDayRoute(d.stops, controller.signal)
+            : { segments: [], legs: [] };
+          if (controller.signal.aborted) return;
+          const legByFrom = Object.fromEntries(result.legs.map(l => [l.fromId, l]));
+          setRouteData(prev => ({ ...prev, [d.id]: { ...result, legByFrom } }));
+        } catch (e) {
+          if (e && e.name === 'AbortError') return;
+        }
+      }
+    })();
+
+    return () => controller.abort();
+  }, [routeKey, focusedDayId]);
 
   if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500">Đang tải hành trình...</div>;
   if (!trip) return null;
@@ -427,7 +1153,8 @@ const TripDetail = () => {
                 <div className="bg-slate-100/50 rounded-2xl p-5 border border-slate-200/60 flex flex-col justify-between">
                   <h3 className="font-bold text-slate-900">Budgeting</h3>
                   <div>
-                    <p className="text-2xl font-bold text-slate-400">0 ₫</p>
+                    <p className={`text-2xl font-bold ${expenseStats.spent > 0 ? 'text-slate-900' : 'text-slate-400'}`}>{formatVND(expenseStats.spent)}</p>
+                    {expenseStats.budget > 0 && <p className="text-xs font-semibold text-slate-500">trên ngân sách {formatVND(expenseStats.budget)}</p>}
                     <button onClick={() => setActiveSection('budget')} className="text-sm font-bold text-slate-600 hover:text-slate-900 mt-1">View details</button>
                   </div>
                 </div>
@@ -456,19 +1183,212 @@ const TripDetail = () => {
                     ) : (
                       day.destinations.map((dest, idx) => {
                         const isActive = activeDestination?.id === dest.id;
+                        const isVisited = dest.isVisited || false; // Cần thêm trường này vào DB
+
                         return (
                           <div 
                             key={dest.id} 
-                            onClick={() => handleDestinationClick(dest, idx)} 
-                            className={`flex gap-4 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-colors ${isActive ? 'bg-orange-50' : 'hover:bg-slate-50'}`}
+                            onClick={(e) => {
+                              // Ngăn chặn nổi bọt sự kiện nếu click vào các nút chức năng
+                              if (e.target.closest('button') || e.target.closest('input')) return;
+                              handleDestinationClick(dest, idx);
+                            }} 
+                            className={`flex gap-3 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-all ${isActive ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-50'}`}
                           >
-                            <div className="flex flex-col items-center mt-1">
-                              <div className={`w-8 h-8 rounded-full text-white text-sm font-bold flex items-center justify-center shadow-sm transition-all ${isActive ? 'bg-slate-900 ring-4 ring-[#FF5645]/20 scale-110' : 'bg-[#FF5645]'}`}>{idx + 1}</div>
-                              {idx !== day.destinations.length - 1 && <div className="w-0.5 h-10 bg-slate-200 my-1"></div>}
+                            {/* Cột trái: Vòng tròn Số thứ tự / Dấu tick Đã đi */}
+                            <div className="flex flex-col items-center mt-2 w-8 shrink-0">
+                              {isVisited ? (
+                                <div className="w-7 h-7 rounded-full bg-slate-400 text-white flex items-center justify-center shadow-sm">
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                </div>
+                              ) : (
+                                <div className={`w-7 h-7 rounded-full text-white text-xs font-extrabold flex items-center justify-center shadow-sm transition-all ${isActive ? 'bg-cyan-500 scale-110' : 'bg-cyan-500/80 group-hover:bg-cyan-500'}`}>
+                                  {idx + 1}
+                                </div>
+                              )}
+                              
+                              {/* Thanh dọc nối các điểm */}
+                              {idx !== day.destinations.length - 1 && (
+                                <div className="w-[1.5px] h-full bg-slate-200 border-l border-dashed border-slate-300 mt-2 min-h-[30px]"></div>
+                              )}
                             </div>
-                            <div className={`flex-1 p-4 rounded-2xl border transition-all ${isActive ? 'bg-white border-[#FF5645] shadow-md' : 'bg-white border-slate-200 group-hover:border-[#FF5645]/50'}`}>
-                              <h4 className={`font-bold text-base transition-colors ${isActive ? 'text-[#FF5645]' : 'text-slate-900'}`}>{dest.placeName}</h4>
-                              {dest.note && <p className="text-sm text-slate-500 mt-1 line-clamp-1">{dest.note}</p>}
+
+                            {/* Cột phải: Nội dung & Toolbar */}
+                            <div className={`flex-1 p-3 rounded-2xl transition-all ${isActive ? 'bg-slate-50/80' : 'bg-transparent'}`}>
+                              
+                              <div className="flex items-center justify-between mb-1">
+                                <h4 className={`font-bold text-[15px] transition-colors ${isActive ? 'text-slate-900' : (isVisited ? 'text-slate-600' : 'text-slate-800')}`}>
+                                  {dest.placeName}
+                                </h4>
+                                {/* Icon Kéo thả (Grip) khi Active */}
+                                {isActive && <button className="text-slate-300 hover:text-slate-500"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"></path></svg></button>}
+                              </div>
+
+                              {/* Khung Ghi chú */}
+                              {isActive ? (
+                                <input 
+                                  type="text" 
+                                  defaultValue={dest.note || ''} 
+                                  onBlur={(e) => handleUpdateDestProperty(day.id, dest.id, 'note', e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                  placeholder="Thêm ghi chú..." 
+                                  className="w-full bg-transparent text-sm text-slate-700 outline-none mb-3 placeholder:text-slate-400 border-b border-transparent focus:border-slate-300 pb-1"
+                                />
+                              ) : (
+                                dest.note && <p className="text-[13px] text-slate-600 mb-2 line-clamp-2">{dest.note}</p>
+                              )}
+
+                              {/* TOOLBAR THAO TÁC (Chỉ hiện khi Active) */}
+                              {isActive && (
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 pt-2 border-t border-slate-200 relative">
+                                  
+                                  {/* 1. Nút Đánh dấu đã đi */}
+                                  <button 
+                                    onClick={() => handleToggleVisited(day, dest, isVisited)}
+                                    className={`flex items-center gap-1.5 text-[13px] font-bold transition-colors ${isVisited ? 'text-slate-400 hover:text-slate-600' : 'text-indigo-600 hover:text-indigo-800'}`}
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                    {isVisited ? 'Bỏ đánh dấu' : 'Đã đi'}
+                                  </button>
+
+                                  {/* 2. Thêm giờ & Hiển thị khung chọn giờ (Pop-over) */}
+                                  <div className="relative">
+                                    {dest.timeRange ? (
+                                      <button 
+                                        onClick={() => openTimePicker(dest)}
+                                        className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md text-[12px] font-bold text-indigo-700 transition-colors"
+                                      >
+                                        {dest.timeRange}
+                                      </button>
+                                    ) : (
+                                      <button 
+                                        onClick={() => openTimePicker(dest)}
+                                        className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 hover:text-slate-800 transition-colors"
+                                      >
+                                        <Clock className="w-3.5 h-3.5" /> Thêm giờ
+                                      </button>
+                                    )}
+
+                                    {/* Khung Pop-over chọn giờ (Chỉ hiện khi bấm vào) */}
+                                    {activeTimePickerDestId === dest.id && (
+                                      <>
+                                        {/* Lớp phủ trong suốt: bấm ra ngoài để đóng */}
+                                        <div
+                                          className="fixed inset-0 z-40"
+                                          onClick={(e) => { e.stopPropagation(); setActiveTimePickerDestId(null); }}
+                                        />
+                                        <div
+                                          className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border border-slate-100 z-50 p-3 flex flex-col gap-3 animate-fade-in"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          {/* Hai ô nhập giờ */}
+                                          <div className="flex items-center gap-2">
+                                            <div className={`flex-1 bg-slate-50 rounded-lg p-2 border transition-colors ${timeDraft.focus === 'start' ? 'border-indigo-400' : 'border-slate-100'}`}>
+                                              <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Start time</span>
+                                              <input
+                                                type="time"
+                                                value={timeDraft.start}
+                                                onFocus={() => setTimeDraft(d => ({ ...d, focus: 'start' }))}
+                                                onChange={(e) => setTimeDraft(d => ({ ...d, start: e.target.value }))}
+                                                className="w-full bg-transparent outline-none text-sm font-bold text-slate-700"
+                                              />
+                                            </div>
+                                            <span className="text-slate-300 font-medium">—</span>
+                                            <div className={`flex-1 bg-slate-50 rounded-lg p-2 border transition-colors ${timeDraft.focus === 'end' ? 'border-indigo-400' : 'border-slate-100'}`}>
+                                              <span className="text-[10px] font-bold text-slate-400 block mb-0.5">End time</span>
+                                              <input
+                                                type="time"
+                                                value={timeDraft.end}
+                                                onFocus={() => setTimeDraft(d => ({ ...d, focus: 'end' }))}
+                                                onChange={(e) => setTimeDraft(d => ({ ...d, end: e.target.value }))}
+                                                className="w-full bg-transparent outline-none text-sm font-bold text-slate-700"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Danh sách đủ 48 mốc giờ, bấm để điền vào ô đang chọn */}
+                                          <div
+                                            className="h-32 overflow-y-auto border border-slate-100 rounded-lg py-1 custom-scrollbar"
+                                            ref={(el) => {
+                                              if (el && !el.dataset.ready) {
+                                                el.dataset.ready = '1';
+                                                const idx = TIME_OPTIONS.indexOf(timeDraft[timeDraft.focus]);
+                                                el.scrollTop = (idx >= 0 ? idx : 16) * 32; // mặc định cuộn tới 08:00
+                                              }
+                                            }}
+                                          >
+                                            {TIME_OPTIONS.map(t => {
+                                              const selected = t === timeDraft[timeDraft.focus];
+                                              const disabled = timeDraft.focus === 'end' && !!timeDraft.start && t <= timeDraft.start;
+                                              return (
+                                                <div
+                                                  key={t}
+                                                  onClick={() => { if (!disabled) pickTimeSlot(t); }}
+                                                  className={`h-8 px-3 flex items-center text-sm ${
+                                                    disabled ? 'text-slate-300 cursor-not-allowed'
+                                                    : selected ? 'bg-indigo-50 text-indigo-700 font-bold cursor-pointer'
+                                                    : 'text-slate-700 hover:bg-slate-50 cursor-pointer'
+                                                  }`}
+                                                >
+                                                  {t}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+
+                                          {/* Nút hành động */}
+                                          <div className="flex items-center justify-center gap-3 pt-1">
+                                            <button
+                                              onClick={() => {
+                                                handleUpdateDestProperty(day.id, dest.id, 'time', null);
+                                                setActiveTimePickerDestId(null);
+                                              }}
+                                              className="px-5 py-2 bg-slate-100 text-slate-600 font-bold text-sm rounded-full hover:bg-slate-200 transition-colors"
+                                            >
+                                              Xóa
+                                            </button>
+                                            <button
+                                              onClick={() => saveTime(day.id, dest.id)}
+                                              className="px-5 py-2 bg-[#FF5645] text-white font-bold text-sm rounded-full hover:bg-[#E04B3B] transition-colors"
+                                            >
+                                              Lưu
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  {/* 4. Thêm chi phí */}
+                                  {(expenseStats.byDest[dest.id] || 0) > 0 ? (
+                                    <button 
+                                      onClick={() => openExpenseDialog({ destinationId: dest.id })}
+                                      className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md text-[12px] font-bold text-indigo-700 transition-colors cursor-pointer"
+                                    >
+                                      {formatVND(expenseStats.byDest[dest.id])}
+                                    </button>
+                                  ) : (
+                                    <button 
+                                      onClick={() => openExpenseDialog({ destinationId: dest.id })} 
+                                      className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 hover:text-slate-800 transition-colors"
+                                    >
+                                      <span className="font-bold text-sm bg-slate-200 w-4 h-4 rounded-full flex items-center justify-center text-[10px]">$</span> Thêm chi phí
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* HIỂN THỊ BADGE KHI KHÔNG ACTIVE NHƯNG CÓ DỮ LIỆU */}
+                              {!isActive && (dest.timeRange || (expenseStats.byDest[dest.id] || 0) > 0) && (
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {dest.timeRange && dest.timeRange.trim() !== '' && <span className="bg-indigo-50 px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700">{dest.timeRange}</span>}
+                                  {(expenseStats.byDest[dest.id] || 0) > 0 && <span className="bg-indigo-50 px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700">{formatVND(expenseStats.byDest[dest.id])}</span>}
+                                </div>
+                              )}
+
+                              {/* Quãng đường & thời gian tới điểm kế tiếp (OSRM) */}
+                              <LegChip leg={routeData[day.id]?.legByFrom?.[dest.id]} />
+
                             </div>
                           </div>
                         )
@@ -508,10 +1428,116 @@ const TripDetail = () => {
 
         {/* --- TAB 3: BUDGET --- */}
         {activeSection === 'budget' && (
-          <div className="p-10 text-center max-w-lg mx-auto pt-24">
-             <Receipt className="w-16 h-16 text-amber-400 mx-auto mb-4" />
-             <h2 className="text-2xl font-extrabold text-slate-900 mb-2">Budgeting</h2>
-             <p className="text-slate-500">Tính năng chia tiền đang được xây dựng...</p>
+          <div className="p-6 sm:p-10 max-w-3xl mx-auto">
+            <div className="flex items-center justify-between gap-4 mb-6">
+              <h2 className="text-4xl font-extrabold text-slate-900">Ngân sách</h2>
+              <button
+                onClick={() => openExpenseDialog()}
+                className="flex items-center gap-2 px-5 py-3 bg-[#FF5645] text-white font-bold text-sm rounded-full hover:bg-[#E04B3B] transition-colors shadow-sm"
+              >
+                <Plus className="w-4 h-4" /> Thêm chi phí
+              </button>
+            </div>
+
+            {/* Thẻ tổng quan */}
+            <div className="bg-slate-100/70 rounded-3xl p-6 border border-slate-200/60 mb-10">
+              <div className="flex items-end justify-between gap-4 mb-3">
+                <p className="text-4xl font-extrabold text-slate-900">{formatVND(expenseStats.spent)}</p>
+                <p className="text-xs font-semibold text-slate-500 mb-1.5 text-right">
+                  {expenseStats.budget > 0 ? `Ngân sách: ${formatVND(expenseStats.budget)}` : 'Chưa đặt ngân sách'}
+                </p>
+              </div>
+              <div className="h-2 rounded-full bg-slate-300/70 overflow-hidden mb-1.5">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    expenseStats.remaining < 0 ? 'bg-rose-500' : expenseStats.percent >= 80 ? 'bg-amber-400' : 'bg-indigo-500'
+                  }`}
+                  style={{ width: `${expenseStats.budget > 0 ? Math.min(100, expenseStats.percent) : 0}%` }}
+                />
+              </div>
+              {expenseStats.budget > 0 && (
+                <p className={`text-xs font-semibold ${expenseStats.remaining < 0 ? 'text-rose-600' : 'text-slate-500'}`}>
+                  {expenseStats.remaining < 0
+                    ? `Vượt ngân sách ${formatVND(-expenseStats.remaining)}`
+                    : `Đã dùng ${expenseStats.percent}% · còn lại ${formatVND(expenseStats.remaining)}`}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-3 mt-5">
+                <button
+                  onClick={() => { setBudgetInput(expenseStats.budget > 0 ? String(expenseStats.budget) : ''); setBudgetDialogOpen(true); }}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-slate-200/70 hover:bg-slate-200 text-slate-800 font-bold text-sm rounded-full transition-colors"
+                >
+                  <Pencil className="w-4 h-4" /> {expenseStats.budget > 0 ? 'Sửa ngân sách' : 'Đặt ngân sách'}
+                </button>
+                <button
+                  onClick={openBalanceDialog}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-slate-200/70 hover:bg-slate-200 text-slate-800 font-bold text-sm rounded-full transition-colors"
+                >
+                  <Users className="w-4 h-4" /> Cân đối nhóm
+                </button>
+                <button
+                  onClick={() => setBreakdownOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-slate-200/70 hover:bg-slate-200 text-slate-800 font-bold text-sm rounded-full transition-colors"
+                >
+                  <Receipt className="w-4 h-4" /> Phân tích chi tiêu
+                </button>
+              </div>
+            </div>
+
+            {/* Danh sách chi phí */}
+            <div className="flex items-center justify-between gap-4 mb-2">
+              <h3 className="text-2xl font-extrabold text-slate-900">Chi phí</h3>
+              <label className="text-sm text-slate-600">
+                <span className="font-bold">Sắp xếp:</span>{' '}
+                <select
+                  value={expenseSort}
+                  onChange={(e) => setExpenseSort(e.target.value)}
+                  className="bg-transparent outline-none font-semibold cursor-pointer"
+                >
+                  <option value="newest">Ngày (mới nhất)</option>
+                  <option value="oldest">Ngày (cũ nhất)</option>
+                  <option value="amount">Số tiền (cao nhất)</option>
+                </select>
+              </label>
+            </div>
+
+            {sortedExpenses.length === 0 ? (
+              <div className="py-14 text-center text-slate-400">
+                <Receipt className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p className="font-semibold">Chưa có khoản chi nào</p>
+                <p className="text-sm">Bấm "Thêm chi phí" để bắt đầu theo dõi chi tiêu của chuyến đi.</p>
+              </div>
+            ) : (
+              sortedExpenses.map((exp) => {
+                const Icon = (CATEGORY_MAP[exp.category] || CATEGORY_MAP.OTHER).Icon;
+                return (
+                  <div key={exp.id} className="flex items-center gap-4 py-4 border-b border-slate-200 last:border-0">
+                    <div className="h-10 w-10 shrink-0 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center">
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-900 truncate">{exp.title}</p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {formatDayDate(exp.expenseDate)} • {(CATEGORY_MAP[exp.category] || CATEGORY_MAP.OTHER).label}
+                        {exp.description ? ` • ${exp.description}` : ''}
+                      </p>
+                      <p className="text-xs text-slate-400 truncate">
+                        Trả bởi {exp.payerId === expenseData.currentUserId ? 'bạn' : exp.payerName}
+                        {exp.splits.length > 1 ? ` • chia ${exp.splits.length} người` : ''}
+                      </p>
+                    </div>
+                    <p className="font-bold text-slate-900 shrink-0">{formatVND(exp.amount)}</p>
+                    <button
+                      onClick={() => deleteExpense(exp)}
+                      aria-label="Xóa khoản chi"
+                      className="shrink-0 h-8 w-8 rounded-full text-slate-300 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
       </div>
@@ -520,14 +1546,22 @@ const TripDetail = () => {
       <div className="hidden md:block w-1/3 lg:w-[45%] relative z-0 border-l border-slate-200">
         
         {/* PANEL TRƯỢT (NỔI TRÊN BẢN ĐỒ) */}
-        <div className={`absolute top-4 left-4 bottom-4 w-[400px] bg-white rounded-3xl shadow-2xl z-[1000] border border-slate-100 flex flex-col overflow-hidden transition-transform duration-500 ease-in-out ${activeDestination ? 'translate-x-0 opacity-100' : '-translate-x-[120%] opacity-0'}`}>
+        <div className={`absolute top-4 left-4 bottom-4 w-[400px] bg-white rounded-3xl shadow-2xl z-[1000] border border-slate-100 flex flex-col overflow-hidden transition-transform duration-500 ease-in-out ${activeDestination && isPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[120%] opacity-0 pointer-events-none'}`}>
           {activeDestination && (
             <>
               {/* Ảnh bìa Panel (Lấy động từ Tab Bài đăng) */}
               <div className="relative h-56 bg-slate-800 flex-shrink-0">
-                {coverImage && <img src={coverImage} alt="Cover" className="w-full h-full object-cover opacity-90 transition-opacity" />}
+                                    <img 
+                      src={coverImage || `https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=800&auto=format&fit=crop`} 
+                      alt="Cover" 
+                      className="w-full h-full object-cover opacity-90 transition-opacity" 
+                      onError={(e) => {
+                        // Nếu ảnh hỏng hoặc lỗi mạng, tự động fallback về ảnh mặc định an toàn
+                        e.target.src = 'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=800&auto=format&fit=crop';
+                      }}
+                    />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
-                <button onClick={() => setActiveDestination(null)} className="absolute top-4 right-4 h-8 w-8 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/40 backdrop-blur transition-colors"><X className="w-4 h-4" /></button>
+                <button onClick={() => setIsPanelOpen(false)} className="absolute top-4 right-4 h-8 w-8 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/40 backdrop-blur transition-colors"><X className="w-4 h-4" /></button>
                 <div className="absolute bottom-4 left-5 right-5">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="bg-[#FF5645] text-white text-xs font-bold px-2.5 py-0.5 rounded-full shadow-sm">{activeDestination.index}</span>
@@ -631,9 +1665,10 @@ const TripDetail = () => {
                             placeholder="Chia sẻ thêm chi tiết (không bắt buộc)..." 
                             className="w-full bg-slate-50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-cyan-500/20 border border-slate-200 transition-all resize-none h-20" 
                           />
+                          <MediaPicker files={newReviewFiles} onChange={setNewReviewFiles} disabled={isSubmittingReview} />
                           <div className="flex justify-end mt-1">
-                             <button onClick={() => { submitReview(); setShowReviewForm(false); }} disabled={isSubmittingReview} className="bg-cyan-600 text-white font-bold text-sm px-5 py-2 rounded-full hover:bg-cyan-700 transition-colors disabled:opacity-50 flex items-center gap-2">
-                              {isSubmittingReview ? 'Đang gửi...' : <><Send className="w-4 h-4" /> Đăng</>}
+                             <button onClick={submitReview} disabled={isSubmittingReview} className="bg-cyan-600 text-white font-bold text-sm px-5 py-2 rounded-full hover:bg-cyan-700 transition-colors disabled:opacity-50 flex items-center gap-2">
+                              {isSubmittingReview ? uploadLabel : <><Send className="w-4 h-4" /> Đăng</>}
                             </button>
                           </div>
                         </div>
@@ -679,7 +1714,8 @@ const TripDetail = () => {
                               </div>
 
                               {/* Content */}
-                              <p className="text-[14px] text-slate-700 mb-4 leading-relaxed">{review.content}</p>
+                              {review.content && <p className="text-[14px] text-slate-700 mb-4 leading-relaxed">{review.content}</p>}
+                              <ReviewMediaGrid media={review.media} />
                               
                               {/* Actions (Thích / Chia sẻ) */}
                               <div className="flex items-center gap-6 pt-1">
@@ -743,24 +1779,494 @@ const TripDetail = () => {
         <MapContainer center={[16.047079, 108.206230]} zoom={5} style={{ height: '100%', width: '100%' }} zoomControl={false}>
           <TileLayer url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}" attribution='&copy; Google Maps' />
           
-          <MapBounds destinations={mapDestinations} activeDestinationId={activeDestination?.id} />
-          
-          {/* Đường vẽ thực tế (OSRM) */}
-          {routePositions.length > 1 && (
-            <Polyline positions={routePositions} color="#FF5645" weight={4} opacity={0.8} />
-          )}
-          
-          {/* Cắm cờ các điểm đến */}
-          {mapDestinations.map((dest, idx) => (
-            <Marker 
-              key={dest.id} 
-              position={[dest.latitude, dest.longitude]} 
-              icon={createCustomMarker(idx + 1, activeDestination?.id === dest.id)}
-              eventHandlers={{ click: () => handleDestinationClick(dest, idx) }}
+          <MapBounds
+            points={mapStops.map(s => [s.lat, s.lng])}
+            boundsKey={boundsKey}
+            activePoint={(() => {
+              const a = activeDestination ? mapStops.find(s => s.id === activeDestination.id) : null;
+              return a ? [a.lat, a.lng] : null;
+            })()}
+            activeKey={activeDestination?.id ?? null}
+          />
+
+          {/* Đường đi thực tế (OSRM) theo từng ngày; đoạn không tìm được đường bộ vẽ nét đứt */}
+          {routeDays
+            .filter(d => !focusedDayId || d.id === focusedDayId)
+            .map(d => (routeData[d.id]?.segments || []).map((seg, i) => (
+              <Polyline
+                key={`${d.id}-${i}-${seg.approx ? 'approx' : 'road'}-${d.color}`}
+                positions={seg.positions}
+                color={d.color}
+                weight={4}
+                opacity={0.8}
+                dashArray={seg.approx ? '8 10' : undefined}
+              />
+            )))}
+
+          {/* Cắm cờ các điểm đến (số thứ tự khớp với danh sách trong từng ngày) */}
+          {mapStops.map((s) => (
+            <Marker
+              key={s.id}
+              position={[s.lat, s.lng]}
+              icon={getMarkerIcon(s.number, activeDestination?.id === s.id, s.color)}
+              eventHandlers={{ click: () => handleDestinationClick(s.dest, s.number - 1) }}
             />
           ))}
         </MapContainer>
       </div>
+
+      {/* ================= DIALOG THÊM CHI PHÍ ================= */}
+      {expenseDialog && (
+        <div
+          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
+          onClick={closeExpenseDialog}
+        >
+          <div
+            className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-6 sm:p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {expenseDialog.step === 'item' && (
+              <button
+                onClick={() => setExpenseDialog({ step: 'form' })}
+                aria-label="Quay lại"
+                className="absolute top-4 left-4 h-8 w-8 rounded-full text-slate-600 flex items-center justify-center hover:bg-slate-100 transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
+            <button
+              onClick={closeExpenseDialog}
+              aria-label="Đóng"
+              className="absolute top-4 right-4 h-8 w-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {expenseDialog.step === 'form' ? (
+              <>
+                <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Thêm chi phí</h3>
+
+                {/* Số tiền */}
+                <label className="flex items-center gap-3 border border-slate-300 rounded-xl px-4 py-3 mb-3 focus-within:border-slate-500 transition-colors">
+                  <span className="font-bold text-slate-700">₫</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    autoFocus
+                    value={expenseForm.amount}
+                    onChange={(e) => updateExpenseForm({ amount: e.target.value })}
+                    placeholder="0"
+                    className="w-full bg-transparent outline-none text-lg font-bold text-slate-800 placeholder:text-slate-300"
+                  />
+                </label>
+
+                {/* Chọn mục */}
+                <button
+                  type="button"
+                  onClick={() => setExpenseDialog({ step: 'item' })}
+                  className="w-full flex items-center gap-3 border border-slate-300 rounded-xl px-4 py-3 mb-3 text-left hover:bg-slate-50 transition-colors"
+                >
+                  {(() => {
+                    const ItemIcon = selectedExpenseDest ? MapPin : (selectedExpenseCategory ? selectedExpenseCategory.Icon : Receipt);
+                    return <ItemIcon className="w-5 h-5 text-slate-600 shrink-0" />;
+                  })()}
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate ${selectedExpenseDest || selectedExpenseCategory ? 'font-semibold text-slate-800' : 'text-slate-500'}`}>
+                      {selectedExpenseDest ? selectedExpenseDest.placeName : (selectedExpenseCategory ? selectedExpenseCategory.label : 'Chọn mục')}
+                    </p>
+                    {selectedExpenseDest && (
+                      <p className="text-xs text-slate-500">Danh mục: {(selectedExpenseCategory || CATEGORY_MAP.OTHER).label}</p>
+                    )}
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-500 shrink-0" />
+                </button>
+
+                {/* Mô tả: hiện sau khi đã chọn mục */}
+                {(selectedExpenseDest || selectedExpenseCategory) && (
+                  <label className="block border border-slate-300 rounded-xl px-4 pt-2 pb-1 mb-3 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+                    <span className="text-xs font-bold text-slate-900 block">Thêm mô tả</span>
+                    <textarea
+                      value={expenseForm.description}
+                      onChange={(e) => updateExpenseForm({ description: e.target.value })}
+                      maxLength={500}
+                      className="w-full bg-transparent outline-none text-sm text-slate-700 resize-none h-14"
+                    />
+                  </label>
+                )}
+
+                {/* Trả bởi */}
+                <label className="flex items-center justify-between gap-3 border border-slate-300 rounded-xl px-4 py-3 mb-3">
+                  <span className="font-bold text-slate-900 shrink-0">Trả bởi</span>
+                  <select
+                    value={expenseForm.payerId ?? ''}
+                    onChange={(e) => updateExpenseForm({ payerId: Number(e.target.value) })}
+                    className="bg-transparent outline-none font-semibold text-slate-700 text-right cursor-pointer min-w-0"
+                  >
+                    {expenseData.members.map(m => (
+                      <option key={m.userId} value={m.userId}>
+                        {m.userId === expenseData.currentUserId ? `Bạn (${m.fullName})` : m.fullName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {/* Chia tiền */}
+                <div className="border border-slate-300 rounded-xl px-4 py-3 mb-3">
+                  <label className="flex items-center justify-between gap-3">
+                    <span className="font-bold text-slate-900">Chia tiền</span>
+                    <select
+                      value={expenseForm.splitMode}
+                      onChange={(e) => updateExpenseForm({ splitMode: e.target.value })}
+                      className="bg-transparent outline-none font-semibold text-slate-700 text-right cursor-pointer"
+                    >
+                      <option value="none">Không chia</option>
+                      <option value="equal">Chia đều</option>
+                    </select>
+                  </label>
+                  {expenseForm.splitMode === 'equal' && (
+                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-2.5">
+                      {expenseData.members.map(m => {
+                        const checked = expenseForm.splitUserIds.includes(m.userId);
+                        return (
+                          <label key={m.userId} className="flex items-center justify-between gap-3 cursor-pointer">
+                            <span className="flex items-center gap-2.5 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleSplitUser(m.userId)}
+                                className="h-4 w-4 accent-[#FF5645]"
+                              />
+                              <span className="truncate text-sm text-slate-700">
+                                {m.userId === expenseData.currentUserId ? `Bạn (${m.fullName})` : m.fullName}
+                              </span>
+                            </span>
+                            {checked && splitShare > 0 && (
+                              <span className="text-xs font-semibold text-slate-500 shrink-0">≈ {formatVND(splitShare)}</span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Ngày */}
+                <label className="flex items-center justify-between gap-3 px-1 mb-5 text-sm">
+                  <span className="text-slate-600"><span className="font-bold">Ngày:</span> Tùy chọn</span>
+                  <input
+                    type="date"
+                    value={expenseForm.date}
+                    onChange={(e) => updateExpenseForm({ date: e.target.value })}
+                    className="border border-slate-200 rounded-lg px-2 py-1 text-slate-700 outline-none focus:border-slate-400"
+                  />
+                </label>
+
+                {expenseError && <p className="text-sm text-rose-600 font-medium mb-3 text-center">{expenseError}</p>}
+
+                <div className="flex justify-center">
+                  <button
+                    onClick={submitExpense}
+                    disabled={isSavingExpense}
+                    className="px-14 py-3 bg-[#FF5645] text-white font-bold rounded-full hover:bg-[#E04B3B] transition-colors disabled:opacity-50"
+                  >
+                    {isSavingExpense ? 'Đang lưu...' : 'Lưu'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Chọn mục</h3>
+
+                <p className="font-bold text-slate-900 mb-3">Chọn từ lịch trình của bạn</p>
+                {allDestinations.length === 0 ? (
+                  <p className="text-sm text-slate-400 mb-2">Lịch trình chưa có địa điểm nào.</p>
+                ) : (
+                  <div className="mb-1">
+                    {(showAllDests ? allDestinations : allDestinations.slice(0, 3)).map(d => (
+                      <button
+                        key={d.id}
+                        onClick={() => { updateExpenseForm({ destinationId: d.id }); setExpenseDialog({ step: 'form' }); }}
+                        className="w-full flex items-center gap-3 py-2 px-1 text-left rounded-lg hover:bg-slate-50 transition-colors"
+                      >
+                        <span className="h-9 w-9 shrink-0 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
+                          <MapPin className="w-4 h-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-slate-800 font-medium">{d.placeName}</span>
+                          <span className="block text-xs text-slate-400">Day {d.dayNumber}</span>
+                        </span>
+                        {expenseForm.destinationId === d.id && <span className="text-xs font-bold text-[#FF5645]">Đã chọn</span>}
+                      </button>
+                    ))}
+                    {allDestinations.length > 3 && (
+                      <button
+                        onClick={() => setShowAllDests(v => !v)}
+                        className="w-full flex items-center gap-3 py-2 px-1 text-left rounded-lg hover:bg-slate-50 transition-colors"
+                      >
+                        <span className="h-9 w-9 shrink-0 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
+                          <MoreHorizontal className="w-4 h-4" />
+                        </span>
+                        <span className="text-slate-800 font-medium">{showAllDests ? 'Thu gọn' : 'Xem tất cả'}</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+                {expenseForm.destinationId && (
+                  <button
+                    onClick={() => updateExpenseForm({ destinationId: null })}
+                    className="text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors"
+                  >
+                    Bỏ chọn địa điểm
+                  </button>
+                )}
+
+                <hr className="my-5 border-slate-200" />
+
+                <p className="font-bold text-slate-900 mb-3">Hoặc chọn theo danh mục</p>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                  {EXPENSE_CATEGORIES.map(({ key, label, Icon }) => (
+                    <button
+                      key={key}
+                      onClick={() => { updateExpenseForm({ category: key }); setExpenseDialog({ step: 'form' }); }}
+                      className={`flex flex-col items-center justify-center gap-2 rounded-xl py-4 text-xs font-semibold transition-colors ${
+                        expenseForm.category === key
+                          ? 'bg-red-50 text-[#FF5645] ring-1 ring-[#FF5645]'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <Icon className="w-5 h-5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================= DIALOG SỬA NGÂN SÁCH ================= */}
+      {budgetDialogOpen && (
+        <div
+          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
+          onClick={() => { if (!isSavingBudget) setBudgetDialogOpen(false); }}
+        >
+          <div
+            className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 sm:p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setBudgetDialogOpen(false)}
+              aria-label="Đóng"
+              className="absolute top-4 right-4 h-8 w-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Ngân sách chuyến đi</h3>
+            <label className="flex items-center gap-3 border border-slate-300 rounded-xl px-4 py-3 focus-within:border-slate-500 transition-colors">
+              <span className="font-bold text-slate-700">₫</span>
+              <input
+                type="number"
+                min="0"
+                step="100000"
+                autoFocus
+                value={budgetInput}
+                onChange={(e) => setBudgetInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveBudget(); }}
+                placeholder="VD: 10000000"
+                className="w-full bg-transparent outline-none text-lg font-bold text-slate-800 placeholder:text-slate-300"
+              />
+            </label>
+            <p className="text-sm text-slate-500 mt-2 h-5">{Number(budgetInput) > 0 ? `= ${formatVND(budgetInput)}` : ''}</p>
+            <div className="flex justify-center mt-4">
+              <button
+                onClick={saveBudget}
+                disabled={isSavingBudget}
+                className="px-12 py-3 bg-[#FF5645] text-white font-bold rounded-full hover:bg-[#E04B3B] transition-colors disabled:opacity-50"
+              >
+                {isSavingBudget ? 'Đang lưu...' : 'Lưu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= DIALOG CÂN ĐỐI NHÓM ================= */}
+      {balanceDialog && (
+        <div
+          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setBalanceDialog(null)}
+        >
+          <div
+            className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-6 sm:p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setBalanceDialog(null)}
+              aria-label="Đóng"
+              className="absolute top-4 right-4 h-8 w-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Cân đối nhóm</h3>
+
+            {balanceDialog.loading && <p className="text-center text-slate-500">Đang tính toán...</p>}
+            {balanceDialog.error && <p className="text-center text-rose-600 font-medium">{balanceDialog.error}</p>}
+
+            {balanceDialog.data && (
+              <>
+                <p className="font-bold text-slate-900 mb-3">Số dư của mỗi người</p>
+                <div className="mb-6">
+                  {balanceDialog.data.balances.map(b => {
+                    const balance = Number(b.balance);
+                    return (
+                      <div key={b.userId} className="flex items-center justify-between gap-3 py-2.5 border-b border-slate-100 last:border-0">
+                        <span className="truncate text-slate-800 font-medium">
+                          {b.userId === expenseData.currentUserId ? `Bạn (${b.fullName})` : b.fullName}
+                        </span>
+                        <span className={`shrink-0 text-sm font-bold ${balance > 0 ? 'text-emerald-600' : balance < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                          {balance > 0 ? `được nhận ${formatVND(balance)}` : balance < 0 ? `còn nợ ${formatVND(-balance)}` : 'đã cân bằng'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <p className="font-bold text-slate-900 mb-3">Cách thanh toán</p>
+                {balanceDialog.data.transfers.length === 0 ? (
+                  <p className="text-sm text-slate-500">Không ai nợ ai, mọi khoản tiền đã cân bằng.</p>
+                ) : (
+                  balanceDialog.data.transfers.map((t, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3 py-2.5 border-b border-slate-100 last:border-0">
+                      <span className="min-w-0 text-sm text-slate-700">
+                        <span className="font-bold">{t.fromUserId === expenseData.currentUserId ? 'Bạn' : t.fromName}</span>
+                        {' '}chuyển cho{' '}
+                        <span className="font-bold">{t.toUserId === expenseData.currentUserId ? 'bạn' : t.toName}</span>
+                      </span>
+                      <span className="shrink-0 font-bold text-slate-900">{formatVND(t.amount)}</span>
+                    </div>
+                  ))
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================= DIALOG PHÂN TÍCH CHI TIÊU ================= */}
+      {breakdownOpen && (
+        <div
+          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setBreakdownOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-6 sm:p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setBreakdownOpen(false)}
+              aria-label="Đóng"
+              className="absolute top-4 right-4 h-8 w-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Phân tích chi tiêu</h3>
+
+            {categoryTotals.length === 0 ? (
+              <p className="text-center text-slate-500">Chưa có khoản chi nào để phân tích.</p>
+            ) : (
+              categoryTotals.map(({ key, label, Icon, amount, percent }) => (
+                <div key={key} className="mb-4">
+                  <div className="flex items-center justify-between gap-3 mb-1.5">
+                    <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <Icon className="w-4 h-4 text-slate-500" /> {label}
+                    </span>
+                    <span className="text-sm font-bold text-slate-900">{formatVND(amount)} <span className="text-slate-400 font-medium">({percent}%)</span></span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-indigo-500" style={{ width: `${percent}%` }} />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================= DIALOG ĐÁNH GIÁ SAU KHI "ĐÃ ĐI" ================= */}
+      {visitDialog && (
+        <div
+          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
+          onClick={closeVisitDialog}
+        >
+          <div
+            className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-6 sm:p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={closeVisitDialog}
+              aria-label="Đóng"
+              className="absolute top-4 right-4 h-8 w-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Trải nghiệm của bạn tại đây</h3>
+
+            {/* Thẻ địa điểm + chip ngày/giờ */}
+            <div className="bg-slate-100 rounded-2xl p-4 mb-5">
+              <p className="font-extrabold text-slate-900 mb-2">{visitDialog.dest.placeName}</p>
+              <div className="flex flex-wrap gap-2">
+                {formatDayDate(visitDialog.dayDate) && (
+                  <span className="bg-indigo-50 px-2.5 py-1 rounded-full text-[12px] font-bold text-indigo-700">{formatDayDate(visitDialog.dayDate)}</span>
+                )}
+                {visitDialog.dest.timeRange && (
+                  <span className="bg-indigo-50 px-2.5 py-1 rounded-full text-[12px] font-bold text-indigo-700">{visitDialog.dest.timeRange}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Chọn số sao */}
+            <div className="flex gap-1.5 justify-center mb-5">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Star
+                  key={star}
+                  onClick={() => { setVisitRating(star); setVisitError(''); }}
+                  className={`w-9 h-9 cursor-pointer transition-colors ${star <= visitRating ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}`}
+                />
+              ))}
+            </div>
+
+            {/* Ảnh / video đính kèm */}
+            <div className="mb-5">
+              <MediaPicker files={visitFiles} onChange={setVisitFiles} disabled={isSubmittingVisit} />
+            </div>
+
+            {/* Nội dung đánh giá */}
+            <label className="block border border-slate-300 rounded-xl px-3 pt-2 pb-1 focus-within:border-slate-500 transition-colors">
+              <span className="text-xs font-bold text-slate-900 block">Đánh giá của bạn</span>
+              <textarea
+                value={visitNote}
+                onChange={(e) => setVisitNote(e.target.value)}
+                placeholder="Chia sẻ cảm nhận về chuyến thăm (không bắt buộc)..."
+                className="w-full bg-transparent outline-none text-sm text-slate-700 resize-none h-20 placeholder:text-slate-400"
+              />
+            </label>
+
+            {visitError && <p className="text-sm text-rose-600 font-medium mt-3">{visitError}</p>}
+
+            <button
+              onClick={submitVisitReview}
+              disabled={isSubmittingVisit}
+              className="w-full mt-6 py-4 bg-[#FF5645] text-white font-extrabold rounded-full hover:bg-[#E04B3B] transition-colors disabled:opacity-50"
+            >
+              {isSubmittingVisit ? uploadLabel : 'Lưu đánh giá'}
+            </button>
+            <p className="text-center text-xs text-slate-400 mt-3">Bạn có thể bỏ qua, địa điểm vẫn được đánh dấu là đã đi.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

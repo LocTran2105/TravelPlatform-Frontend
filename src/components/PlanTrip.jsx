@@ -13,6 +13,7 @@ const PlanTrip = () => {
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
   const [visibility, setVisibility] = useState('FRIENDS');
+  const [totalBudget, setTotalBudget] = useState('');
 
   // State bạn đồng hành
   const [companionInput, setCompanionInput] = useState('');
@@ -139,6 +140,12 @@ const PlanTrip = () => {
       return;
     }
 
+    const budgetValue = totalBudget === '' ? 0 : Number(totalBudget);
+    if (!Number.isFinite(budgetValue) || budgetValue < 0 || budgetValue > 1_000_000_000_000) {
+      setErrorMsg('Ngân sách không hợp lệ.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -147,6 +154,7 @@ const PlanTrip = () => {
         destination: destination.trim(),
         startDate: startDate ? startDate.toISOString().split('T')[0] : null,
         endDate: endDate ? endDate.toISOString().split('T')[0] : null,
+        totalBudget: budgetValue,
         visibility: visibility,
         isPublic: visibility === 'PUBLIC',
         memberCount: companionEmails.length + 1, 
@@ -275,6 +283,21 @@ const PlanTrip = () => {
                 />
               </div>
             </div>
+          </div>
+
+          {/* 2b. NGÂN SÁCH (không bắt buộc, có thể đặt sau trong tab Budget) */}
+          <div className="border border-gray-300 rounded-2xl p-5 flex items-center focus-within:border-gray-500 focus-within:ring-2 focus-within:ring-gray-200 transition-all shadow-sm">
+            <span className="text-gray-900 font-bold mr-4 whitespace-nowrap text-base">Budget</span>
+            <input
+              type="number"
+              min="0"
+              step="100000"
+              value={totalBudget}
+              onChange={(e) => setTotalBudget(e.target.value)}
+              placeholder="Total budget (optional)"
+              className="outline-none flex-1 text-gray-700 font-medium placeholder-gray-400 bg-transparent min-w-[200px]"
+            />
+            <span className="text-gray-400 font-semibold ml-2">₫</span>
           </div>
 
           {/* 3. BẠN ĐỒNG HÀNH */}

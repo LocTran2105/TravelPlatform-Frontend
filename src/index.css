@@ -28,3 +28,16 @@ body {
 .leaflet-container {
   z-index: 10 !important;
 }
+
+/* Ẩn icon đồng hồ mặc định của thẻ input type="time" */
+input[type="time"]::-webkit-calendar-picker-indicator {
+    display: none;
+    -webkit-appearance: none;
+}
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1; /* Tailwind slate-300 */
+    border-radius: 4px;
+}
