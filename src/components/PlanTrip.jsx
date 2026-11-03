@@ -5,6 +5,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { Calendar, Users, ChevronDown, X, Compass, MapPin } from 'lucide-react';
 
+
 const PlanTrip = () => {
   const navigate = useNavigate();
 

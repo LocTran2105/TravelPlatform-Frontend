@@ -14,6 +14,7 @@ import {
   Clock, MessageSquare, Star, Heart, Send, Image as ImageIcon, Play,
   Utensils, Wine, Landmark, Ticket, ShoppingBag, ShoppingCart, Fuel, Trash2, Pencil
 } from 'lucide-react';
+import AiAssistantChat from './AiAssistantChat';
 
 // ================= COMPONENT HỖ TRỢ BẢN ĐỒ =================
 // boundsKey / activeKey là chuỗi/số ổn định: bản đồ chỉ di chuyển khi tập điểm hoặc điểm được chọn THẬT SỰ đổi,
@@ -1165,7 +1166,7 @@ const TripDetail = () => {
           </div>
         )}
 
-        {/* --- TAB 2: ITINERARY --- */}
+{/* --- TAB 2: ITINERARY --- */}
         {activeSection === 'itinerary' && (
           <div className="p-6 sm:p-8 max-w-3xl mx-auto w-full pt-16">
             <h2 className="text-3xl font-extrabold text-slate-900 mb-8">Itinerary</h2>
@@ -1183,19 +1184,17 @@ const TripDetail = () => {
                     ) : (
                       day.destinations.map((dest, idx) => {
                         const isActive = activeDestination?.id === dest.id;
-                        const isVisited = dest.isVisited || false; // Cần thêm trường này vào DB
+                        const isVisited = dest.isVisited || false;
 
                         return (
                           <div 
                             key={dest.id} 
                             onClick={(e) => {
-                              // Ngăn chặn nổi bọt sự kiện nếu click vào các nút chức năng
                               if (e.target.closest('button') || e.target.closest('input')) return;
                               handleDestinationClick(dest, idx);
                             }} 
                             className={`flex gap-3 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-all ${isActive ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-50'}`}
                           >
-                            {/* Cột trái: Vòng tròn Số thứ tự / Dấu tick Đã đi */}
                             <div className="flex flex-col items-center mt-2 w-8 shrink-0">
                               {isVisited ? (
                                 <div className="w-7 h-7 rounded-full bg-slate-400 text-white flex items-center justify-center shadow-sm">
@@ -1207,24 +1206,19 @@ const TripDetail = () => {
                                 </div>
                               )}
                               
-                              {/* Thanh dọc nối các điểm */}
                               {idx !== day.destinations.length - 1 && (
                                 <div className="w-[1.5px] h-full bg-slate-200 border-l border-dashed border-slate-300 mt-2 min-h-[30px]"></div>
                               )}
                             </div>
 
-                            {/* Cột phải: Nội dung & Toolbar */}
                             <div className={`flex-1 p-3 rounded-2xl transition-all ${isActive ? 'bg-slate-50/80' : 'bg-transparent'}`}>
-                              
                               <div className="flex items-center justify-between mb-1">
                                 <h4 className={`font-bold text-[15px] transition-colors ${isActive ? 'text-slate-900' : (isVisited ? 'text-slate-600' : 'text-slate-800')}`}>
                                   {dest.placeName}
                                 </h4>
-                                {/* Icon Kéo thả (Grip) khi Active */}
                                 {isActive && <button className="text-slate-300 hover:text-slate-500"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"></path></svg></button>}
                               </div>
 
-                              {/* Khung Ghi chú */}
                               {isActive ? (
                                 <input 
                                   type="text" 
@@ -1238,11 +1232,8 @@ const TripDetail = () => {
                                 dest.note && <p className="text-[13px] text-slate-600 mb-2 line-clamp-2">{dest.note}</p>
                               )}
 
-                              {/* TOOLBAR THAO TÁC (Chỉ hiện khi Active) */}
                               {isActive && (
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 pt-2 border-t border-slate-200 relative">
-                                  
-                                  {/* 1. Nút Đánh dấu đã đi */}
                                   <button 
                                     onClick={() => handleToggleVisited(day, dest, isVisited)}
                                     className={`flex items-center gap-1.5 text-[13px] font-bold transition-colors ${isVisited ? 'text-slate-400 hover:text-slate-600' : 'text-indigo-600 hover:text-indigo-800'}`}
@@ -1251,7 +1242,6 @@ const TripDetail = () => {
                                     {isVisited ? 'Bỏ đánh dấu' : 'Đã đi'}
                                   </button>
 
-                                  {/* 2. Thêm giờ & Hiển thị khung chọn giờ (Pop-over) */}
                                   <div className="relative">
                                     {dest.timeRange ? (
                                       <button 
@@ -1269,10 +1259,8 @@ const TripDetail = () => {
                                       </button>
                                     )}
 
-                                    {/* Khung Pop-over chọn giờ (Chỉ hiện khi bấm vào) */}
                                     {activeTimePickerDestId === dest.id && (
                                       <>
-                                        {/* Lớp phủ trong suốt: bấm ra ngoài để đóng */}
                                         <div
                                           className="fixed inset-0 z-40"
                                           onClick={(e) => { e.stopPropagation(); setActiveTimePickerDestId(null); }}
@@ -1281,7 +1269,6 @@ const TripDetail = () => {
                                           className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border border-slate-100 z-50 p-3 flex flex-col gap-3 animate-fade-in"
                                           onClick={(e) => e.stopPropagation()}
                                         >
-                                          {/* Hai ô nhập giờ */}
                                           <div className="flex items-center gap-2">
                                             <div className={`flex-1 bg-slate-50 rounded-lg p-2 border transition-colors ${timeDraft.focus === 'start' ? 'border-indigo-400' : 'border-slate-100'}`}>
                                               <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Start time</span>
@@ -1306,14 +1293,13 @@ const TripDetail = () => {
                                             </div>
                                           </div>
 
-                                          {/* Danh sách đủ 48 mốc giờ, bấm để điền vào ô đang chọn */}
                                           <div
                                             className="h-32 overflow-y-auto border border-slate-100 rounded-lg py-1 custom-scrollbar"
                                             ref={(el) => {
                                               if (el && !el.dataset.ready) {
                                                 el.dataset.ready = '1';
                                                 const idx = TIME_OPTIONS.indexOf(timeDraft[timeDraft.focus]);
-                                                el.scrollTop = (idx >= 0 ? idx : 16) * 32; // mặc định cuộn tới 08:00
+                                                el.scrollTop = (idx >= 0 ? idx : 16) * 32;
                                               }
                                             }}
                                           >
@@ -1336,7 +1322,6 @@ const TripDetail = () => {
                                             })}
                                           </div>
 
-                                          {/* Nút hành động */}
                                           <div className="flex items-center justify-center gap-3 pt-1">
                                             <button
                                               onClick={() => {
@@ -1359,7 +1344,6 @@ const TripDetail = () => {
                                     )}
                                   </div>
 
-                                  {/* 4. Thêm chi phí */}
                                   {(expenseStats.byDest[dest.id] || 0) > 0 ? (
                                     <button 
                                       onClick={() => openExpenseDialog({ destinationId: dest.id })}
@@ -1378,7 +1362,6 @@ const TripDetail = () => {
                                 </div>
                               )}
 
-                              {/* HIỂN THỊ BADGE KHI KHÔNG ACTIVE NHƯNG CÓ DỮ LIỆU */}
                               {!isActive && (dest.timeRange || (expenseStats.byDest[dest.id] || 0) > 0) && (
                                 <div className="flex flex-wrap gap-2 mt-2">
                                   {dest.timeRange && dest.timeRange.trim() !== '' && <span className="bg-indigo-50 px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700">{dest.timeRange}</span>}
@@ -1386,9 +1369,7 @@ const TripDetail = () => {
                                 </div>
                               )}
 
-                              {/* Quãng đường & thời gian tới điểm kế tiếp (OSRM) */}
                               <LegChip leg={routeData[day.id]?.legByFrom?.[dest.id]} />
-
                             </div>
                           </div>
                         )
@@ -1425,7 +1406,6 @@ const TripDetail = () => {
             </div>
           </div>
         )}
-
         {/* --- TAB 3: BUDGET --- */}
         {activeSection === 'budget' && (
           <div className="p-6 sm:p-10 max-w-3xl mx-auto">
@@ -1543,9 +1523,8 @@ const TripDetail = () => {
       </div>
 
       {/* ================= CỘT 3. BẢN ĐỒ VÀ PANEL CHI TIẾT ĐỊA ĐIỂM ================= */}
-      <div className="hidden md:block w-1/3 lg:w-[45%] relative z-0 border-l border-slate-200">
-        
-        {/* PANEL TRƯỢT (NỔI TRÊN BẢN ĐỒ) */}
+{/* ================= CỘT 3. BẢN ĐỒ VÀ PANEL CHI TIẾT ĐỊA ĐIỂM ================= */}
+      <div className="hidden md:block w-1/3 lg:w-[45%] relative z-0 border-l border-slate-200">        {/* PANEL TRƯỢT (NỔI TRÊN BẢN ĐỒ) */}
         <div className={`absolute top-4 left-4 bottom-4 w-[400px] bg-white rounded-3xl shadow-2xl z-[1000] border border-slate-100 flex flex-col overflow-hidden transition-transform duration-500 ease-in-out ${activeDestination && isPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[120%] opacity-0 pointer-events-none'}`}>
           {activeDestination && (
             <>
@@ -2214,7 +2193,7 @@ const TripDetail = () => {
 
             <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Trải nghiệm của bạn tại đây</h3>
 
-            {/* Thẻ địa điểm + chip ngày/giờ */}
+         {/* Thẻ địa điểm + chip ngày/giờ */}
             <div className="bg-slate-100 rounded-2xl p-4 mb-5">
               <p className="font-extrabold text-slate-900 mb-2">{visitDialog.dest.placeName}</p>
               <div className="flex flex-wrap gap-2">
@@ -2266,6 +2245,14 @@ const TripDetail = () => {
             <p className="text-center text-xs text-slate-400 mt-3">Bạn có thể bỏ qua, địa điểm vẫn được đánh dấu là đã đi.</p>
           </div>
         </div>
+      )}
+
+      {/* === THÊM BONG BÓNG CHAT AI Ở ĐÂY (SAU KHI ĐÓNG visitDialog) === */}
+      {trip && (
+        <AiAssistantChat
+          trip={trip}
+          onDestinationAdded={fetchTripDetails}
+        />
       )}
     </div>
   );
