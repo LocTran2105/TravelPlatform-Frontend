@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import Home from './components/Home';
@@ -6,25 +7,19 @@ import Register from './components/Register';
 import ResetPassword from './components/ResetPassword';
 import Profile from './components/Profile';
 import PlanTrip from './components/PlanTrip';
-import TripDetail from './components/TripDetail'; // Nhớ import ở trên cùng
+import TripDetail from './components/TripDetail';
 import Community from './components/Community';
-// 2. Thêm bộ đánh chặn (Interceptor) của Axios
+
+// Interceptor toàn cục: gặp 401 thì xoá thông tin đăng nhập và về /login
 axios.interceptors.response.use(
-  (response) => {
-    // Nếu request thành công, trả về bình thường
-    return response;
-  },
+  (response) => response,
   (error) => {
-    // Nếu lỗi là 401 (Unauthorized - Chưa xác thực hoặc Token hết hạn)
     if (error.response && error.response.status === 401) {
       console.warn("Token hết hạn hoặc không hợp lệ. Đang đăng xuất...");
-      
-      // Xóa thông tin cũ
+
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      
-      // Chuyển hướng cưỡng bức về trang đăng nhập
-      // Dùng window.location để đảm bảo toàn bộ state của web được reset
+
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
@@ -34,29 +29,35 @@ axios.interceptors.response.use(
 );
 
 function App() {
+  // Xác thực ngầm khi mở app: gọi API bắt buộc đăng nhập để kiểm tra
+  // token còn hợp lệ và user còn tồn tại trong DB.
+  // Nếu backend trả 401, interceptor ở trên sẽ tự đăng xuất.
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      axios.get('http://localhost:8080/api/users/profile', {
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => {
+        // Không cần xử lý ở đây, interceptor đã lo phần 401
+      });
+    }
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>
-        {/* Trang chủ — nội dung tự đổi theo trạng thái đăng nhập, xem Home.jsx */}
         <Route path="/" element={<Home />} />
-
+        <Route path="/home" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-
-        {/* /home dùng chung component Home — hiển thị đúng khi vừa đăng nhập xong */}
-        <Route path="/home" element={<Home />} />
-
-        {/* TODO: /plan cho giao diện lập kế hoạch, /community cho trang chia sẻ chuyến đi */}
-        {/* <Route path="/plan" element={<Plan />} /> */}
-        {/* <Route path="/community" element={<Community />} /> */}
-
-        {/* Đường dẫn không hợp lệ -> quay về trang chủ */}
-        <Route path="*" element={<Navigate to="/" replace />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/plan" element={<PlanTrip />} />
         <Route path="/trips/:tripId" element={<TripDetail />} />
         <Route path="/community" element={<Community />} />
+
+        {/* Đường dẫn không hợp lệ -> quay về trang chủ */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
