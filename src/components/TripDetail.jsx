@@ -15,6 +15,7 @@ import {
   Utensils, Wine, Landmark, Ticket, ShoppingBag, ShoppingCart, Fuel, Trash2, Pencil
 } from 'lucide-react';
 import AiAssistantChat from './AiAssistantChat';
+import TripPlannerBoard from './TripPlannerBoard';
 
 // ================= COMPONENT HỖ TRỢ BẢN ĐỒ =================
 // boundsKey / activeKey là chuỗi/số ổn định: bản đồ chỉ di chuyển khi tập điểm hoặc điểm được chọn THẬT SỰ đổi,
@@ -22,18 +23,67 @@ import AiAssistantChat from './AiAssistantChat';
 function MapBounds({ points, boundsKey, activePoint, activeKey }) {
   const map = useMap();
   const pointsRef = useRef(points);
+  const activePointRef = useRef(activePoint);
   pointsRef.current = points;
+  activePointRef.current = activePoint;
 
-  // Chọn một địa điểm -> bay tới đó
+  // Leaflet cần đo lại kích thước sau khi đổi tab hoặc kéo thanh chia panel.
   useEffect(() => {
-    if (activePoint) map.flyTo(activePoint, 16, { animate: true, duration: 1.5 });
-  }, [activeKey, map]);
-
-  // Không có địa điểm nào được chọn -> khung hình ôm trọn các điểm đang xem
-  useEffect(() => {
-    if (activeKey || pointsRef.current.length === 0) return;
-    map.fitBounds(L.latLngBounds(pointsRef.current), { padding: [50, 50], maxZoom: 15, animate: true });
+    let frame1 = 0;
+    let frame2 = 0;
+    frame1 = requestAnimationFrame(() => {
+      frame2 = requestAnimationFrame(() => {
+        map.invalidateSize({ pan: false, debounceMoveend: true });
+        if (activePointRef.current) {
+          map.flyTo(activePointRef.current, 15, { animate: true, duration: 0.8 });
+        } else if (activeKey) {
+          return;
+        } else if (pointsRef.current.length === 1) {
+          map.setView(pointsRef.current[0], 15, { animate: true });
+        } else if (pointsRef.current.length > 1) {
+          map.fitBounds(L.latLngBounds(pointsRef.current), {
+            padding: [44, 44], maxZoom: 15, animate: true,
+          });
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame1);
+      cancelAnimationFrame(frame2);
+    };
   }, [boundsKey, activeKey, map]);
+
+  return null;
+}
+
+function MapSizeObserver({ resizeKey }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    const observedElement = container.parentElement || container;
+    let frame = 0;
+    const invalidate = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        map.invalidateSize({ pan: false, debounceMoveend: true });
+      });
+    };
+
+    let observer;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(invalidate);
+      observer.observe(observedElement);
+    }
+    window.addEventListener('resize', invalidate);
+    invalidate();
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener('resize', invalidate);
+    };
+  }, [map, resizeKey]);
 
   return null;
 }
@@ -297,7 +347,21 @@ const ReviewMediaGrid = ({ media }) => {
 const OSRM_BASE_URL = 'https://router.project-osrm.org';
 const OSRM_MIN_INTERVAL_MS = 1000;
 
-const hasCoord = (d) => d.latitude != null && d.longitude != null && Number.isFinite(Number(d.latitude)) && Number.isFinite(Number(d.longitude));
+const hasCoord = (d) => {
+  if (!d || d.latitude == null || d.longitude == null
+      || String(d.latitude).trim() === '' || String(d.longitude).trim() === '') return false;
+  const lat = Number(d.latitude);
+  const lng = Number(d.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng)
+    && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+};
+
+const isValidLatLng = (lat, lng) => Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))
+  && Number(lat) >= -90 && Number(lat) <= 90
+  && Number(lng) >= -180 && Number(lng) <= 180;
+
+// Cache tọa độ Photon trong phiên để không geocode lặp khi React render lại.
+const destinationGeocodeCache = new Map();
 
 // Khoảng cách đường chim bay (mét) - dùng khi không tìm được đường bộ
 const haversineMeters = (a, b) => {
@@ -432,6 +496,11 @@ const TripDetail = () => {
   const [focusedDayId, setFocusedDayId] = useState(null);
   const [activeDestination, setActiveDestination] = useState(null);
   const [routeData, setRouteData] = useState({}); // { [dayId]: { segments, legs, legByFrom } }
+  const [mapPanelWidth, setMapPanelWidth] = useState(460);
+  const [isResizingMap, setIsResizingMap] = useState(false);
+  const mapResizeStartRef = useRef(null);
+  const [geocodedCoordinates, setGeocodedCoordinates] = useState({});
+  const geocodeAttemptedRef = useRef(new Set());
 
   const [addingDayId, setAddingDayId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -548,6 +617,38 @@ const TripDetail = () => {
 
   useEffect(() => { fetchTripDetails(); }, [tripId]);
   useEffect(() => { fetchExpenses(); }, [tripId]);
+
+  // Kéo thanh chia ở mép trái bản đồ: kéo sang trái để mở rộng map, sang phải để thu nhỏ.
+  useEffect(() => {
+    if (!isResizingMap) return undefined;
+
+    const onPointerMove = (event) => {
+      const start = mapResizeStartRef.current;
+      if (!start) return;
+      const sidebarWidth = isSidebarOpen ? 256 : 0;
+      const maxWidth = Math.max(340, window.innerWidth - sidebarWidth - 380);
+      const nextWidth = Math.max(320, Math.min(maxWidth, start.width + start.x - event.clientX));
+      setMapPanelWidth(nextWidth);
+    };
+    const onPointerUp = () => {
+      mapResizeStartRef.current = null;
+      setIsResizingMap(false);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizingMap, isSidebarOpen]);
 
   useEffect(() => {
     if (!expenseDialog && !balanceDialog && !breakdownOpen && !budgetDialogOpen) return;
@@ -912,14 +1013,97 @@ const TripDetail = () => {
     if (dayRefs.current[dayId]) dayRefs.current[dayId].scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  // Các điểm có toạ độ hợp lệ của từng ngày. `number` = số thứ tự TRONG NGÀY (khớp với số hiện trong danh sách).
+  // Những destination cũ chỉ có placeName (chưa lưu latitude/longitude) vẫn được geocode qua Photon.
+  // Query gắn destination của Trip để giảm nhầm địa điểm trùng tên ở tỉnh/thành khác.
+  const missingCoordinateDestinations = useMemo(() =>
+    (trip?.tripDays || []).flatMap(day => (day.destinations || [])
+      .filter(dest => dest?.id != null && dest?.placeName && !hasCoord(dest)
+        && !geocodedCoordinates[dest.id]
+        && !geocodeAttemptedRef.current.has(String(dest.id)))
+      .map(dest => ({ id: dest.id, placeName: dest.placeName }))),
+    [trip, geocodedCoordinates]
+  );
+
+  const missingCoordinatesKey = useMemo(() => missingCoordinateDestinations
+    .map(item => `${item.id}:${item.placeName}`).join('|'), [missingCoordinateDestinations]);
+
+  useEffect(() => {
+    if (!missingCoordinateDestinations.length) return undefined;
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const resolveMissingCoordinates = async () => {
+      const newlyResolved = {};
+      for (const destinationItem of missingCoordinateDestinations) {
+        if (cancelled || controller.signal.aborted) return;
+        const cacheKey = `${destinationItem.placeName}|${trip?.destination || ''}`.toLowerCase();
+        const cached = destinationGeocodeCache.get(cacheKey);
+        if (cached && isValidLatLng(cached.latitude, cached.longitude)) {
+          newlyResolved[destinationItem.id] = cached;
+          continue;
+        }
+
+        geocodeAttemptedRef.current.add(String(destinationItem.id));
+        try {
+          const query = `${destinationItem.placeName}, ${trip?.destination || ''}, Việt Nam`;
+          // Photon public API does not support lang=vi; omit lang to avoid HTTP 400.
+          const params = new URLSearchParams({ q: query, limit: '1' });
+          const response = await fetch(`https://photon.komoot.io/api/?${params.toString()}`, {
+            signal: controller.signal,
+            headers: { Accept: 'application/json' },
+          });
+          if (!response.ok) throw new Error(`Photon HTTP ${response.status}`);
+          const data = await response.json();
+          const feature = data?.features?.[0];
+          const coordinates = feature?.geometry?.coordinates;
+          if (!Array.isArray(coordinates) || coordinates.length < 2) continue;
+
+          const longitude = Number(coordinates[0]);
+          const latitude = Number(coordinates[1]);
+          if (!isValidLatLng(latitude, longitude)) continue;
+
+          const resolved = { latitude, longitude, source: 'Photon/OSM' };
+          destinationGeocodeCache.set(cacheKey, resolved);
+          if (!cancelled) newlyResolved[destinationItem.id] = resolved;
+        } catch (error) {
+          if (error?.name !== 'AbortError') {
+            console.warn(`Không geocode được địa điểm "${destinationItem.placeName}" qua Photon:`, error);
+          }
+        }
+        // Giữ request thưa để không tạo burst vào demo API Photon.
+        await sleep(250);
+      }
+      if (!cancelled && Object.keys(newlyResolved).length > 0) {
+        setGeocodedCoordinates(previous => ({ ...previous, ...newlyResolved }));
+      }
+    };
+
+    resolveMissingCoordinates();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [missingCoordinatesKey, trip?.destination]);
+
+  // Các điểm có tọa độ hợp lệ theo từng ngày; ưu tiên tọa độ đã lưu, fallback Photon cho bản ghi cũ.
   const routeDays = useMemo(() => (trip?.tripDays || []).map((day, dayIndex) => ({
     id: day.id,
     color: DAY_COLORS[dayIndex % DAY_COLORS.length],
-    stops: (day.destinations || [])
-      .map((dest, i) => ({ dest, id: dest.id, number: i + 1, lat: Number(dest.latitude), lng: Number(dest.longitude) }))
-      .filter(s => hasCoord(s.dest)),
-  })), [trip]);
+    stops: (day.destinations || []).map((dest, i) => {
+      const fallback = geocodedCoordinates[dest.id];
+      const lat = hasCoord(dest) ? Number(dest.latitude) : Number(fallback?.latitude);
+      const lng = hasCoord(dest) ? Number(dest.longitude) : Number(fallback?.longitude);
+      if (!isValidLatLng(lat, lng)) return null;
+      const mapDestination = hasCoord(dest) ? dest : { ...dest, latitude: lat, longitude: lng };
+      return { dest: mapDestination, id: dest.id, number: i + 1, lat, lng };
+    }).filter(Boolean),
+  })), [trip, geocodedCoordinates]);
+
+  // Địa điểm chưa có tọa độ và Photon không tìm được được giữ lại để hiển thị cảnh báo trên bản đồ.
+  const unmappedDestinations = useMemo(() => (trip?.tripDays || []).flatMap(day =>
+    (day.destinations || []).filter(dest => !hasCoord(dest) && !geocodedCoordinates[dest.id])
+      .map(dest => dest.placeName).filter(Boolean)
+  ), [trip, geocodedCoordinates]);
 
   // Chuỗi đại diện cho toạ độ + thứ tự của mọi ngày: chỉ đổi khi tuyến đường thật sự cần tính lại
   const routeKey = useMemo(
@@ -1168,241 +1352,249 @@ const TripDetail = () => {
 
 {/* --- TAB 2: ITINERARY --- */}
         {activeSection === 'itinerary' && (
-          <div className="p-6 sm:p-8 max-w-3xl mx-auto w-full pt-16">
-            <h2 className="text-3xl font-extrabold text-slate-900 mb-8">Itinerary</h2>
-            <div className="space-y-8">
-              {trip.tripDays?.map((day) => (
-                <div key={day.id} ref={el => dayRefs.current[day.id] = el} className={`bg-white border rounded-3xl p-6 shadow-sm transition-all ${focusedDayId === day.id ? 'border-[#FF5645] ring-4 ring-[#FF5645]/10' : 'border-slate-200'}`}>
-                  <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-3 mb-6"><span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Day {day.dayNumber}</span><span className="text-slate-500">{day.dayDate}</span></h3>
-                  
-                  <div className="space-y-4 mb-4">
-                    {(!day.destinations || day.destinations.length === 0) ? (
-                      <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-2xl">
-                        <CheckSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                        <p className="text-sm text-slate-400 font-medium">Bạn chưa thêm địa điểm nào.</p>
-                      </div>
-                    ) : (
-                      day.destinations.map((dest, idx) => {
-                        const isActive = activeDestination?.id === dest.id;
-                        const isVisited = dest.isVisited || false;
+          <div className="w-full h-[calc(100vh-100px)] bg-slate-50 overflow-y-auto">
+            {/* Lịch trình chiếm toàn bộ chiều rộng; AI được mở từ bong bóng nổi ở góc màn hình. */}
+            <div className="w-full p-6 sm:p-8 relative">
+              <div className="max-w-3xl mx-auto w-full">
+                <h2 className="text-3xl font-extrabold text-slate-900 mb-8">Itinerary</h2>
+                <div className="space-y-8">
+                  {trip.tripDays?.map((day) => (
+                    <div key={day.id} ref={el => dayRefs.current[day.id] = el} className={`bg-white border rounded-3xl p-6 shadow-sm transition-all ${focusedDayId === day.id ? 'border-[#FF5645] ring-4 ring-[#FF5645]/10' : 'border-slate-200'}`}>
+                      <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-3 mb-6"><span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Day {day.dayNumber}</span><span className="text-slate-500">{day.dayDate}</span></h3>
+                      
+                      <div className="space-y-4 mb-4">
+                        {(!day.destinations || day.destinations.length === 0) ? (
+                          <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-2xl">
+                            <CheckSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                            <p className="text-sm text-slate-400 font-medium">Bạn chưa thêm địa điểm nào.</p>
+                          </div>
+                        ) : (
+                          day.destinations.map((dest, idx) => {
+                            const isActive = activeDestination?.id === dest.id;
+                            const isVisited = dest.isVisited || false; 
 
-                        return (
-                          <div 
-                            key={dest.id} 
-                            onClick={(e) => {
-                              if (e.target.closest('button') || e.target.closest('input')) return;
-                              handleDestinationClick(dest, idx);
-                            }} 
-                            className={`flex gap-3 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-all ${isActive ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-50'}`}
-                          >
-                            <div className="flex flex-col items-center mt-2 w-8 shrink-0">
-                              {isVisited ? (
-                                <div className="w-7 h-7 rounded-full bg-slate-400 text-white flex items-center justify-center shadow-sm">
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                </div>
-                              ) : (
-                                <div className={`w-7 h-7 rounded-full text-white text-xs font-extrabold flex items-center justify-center shadow-sm transition-all ${isActive ? 'bg-cyan-500 scale-110' : 'bg-cyan-500/80 group-hover:bg-cyan-500'}`}>
-                                  {idx + 1}
-                                </div>
-                              )}
-                              
-                              {idx !== day.destinations.length - 1 && (
-                                <div className="w-[1.5px] h-full bg-slate-200 border-l border-dashed border-slate-300 mt-2 min-h-[30px]"></div>
-                              )}
-                            </div>
-
-                            <div className={`flex-1 p-3 rounded-2xl transition-all ${isActive ? 'bg-slate-50/80' : 'bg-transparent'}`}>
-                              <div className="flex items-center justify-between mb-1">
-                                <h4 className={`font-bold text-[15px] transition-colors ${isActive ? 'text-slate-900' : (isVisited ? 'text-slate-600' : 'text-slate-800')}`}>
-                                  {dest.placeName}
-                                </h4>
-                                {isActive && <button className="text-slate-300 hover:text-slate-500"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"></path></svg></button>}
-                              </div>
-
-                              {isActive ? (
-                                <input 
-                                  type="text" 
-                                  defaultValue={dest.note || ''} 
-                                  onBlur={(e) => handleUpdateDestProperty(day.id, dest.id, 'note', e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                                  placeholder="Thêm ghi chú..." 
-                                  className="w-full bg-transparent text-sm text-slate-700 outline-none mb-3 placeholder:text-slate-400 border-b border-transparent focus:border-slate-300 pb-1"
-                                />
-                              ) : (
-                                dest.note && <p className="text-[13px] text-slate-600 mb-2 line-clamp-2">{dest.note}</p>
-                              )}
-
-                              {isActive && (
-                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 pt-2 border-t border-slate-200 relative">
-                                  <button 
-                                    onClick={() => handleToggleVisited(day, dest, isVisited)}
-                                    className={`flex items-center gap-1.5 text-[13px] font-bold transition-colors ${isVisited ? 'text-slate-400 hover:text-slate-600' : 'text-indigo-600 hover:text-indigo-800'}`}
-                                  >
-                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                    {isVisited ? 'Bỏ đánh dấu' : 'Đã đi'}
-                                  </button>
-
-                                  <div className="relative">
-                                    {dest.timeRange ? (
-                                      <button 
-                                        onClick={() => openTimePicker(dest)}
-                                        className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md text-[12px] font-bold text-indigo-700 transition-colors"
-                                      >
-                                        {dest.timeRange}
-                                      </button>
-                                    ) : (
-                                      <button 
-                                        onClick={() => openTimePicker(dest)}
-                                        className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 hover:text-slate-800 transition-colors"
-                                      >
-                                        <Clock className="w-3.5 h-3.5" /> Thêm giờ
-                                      </button>
-                                    )}
-
-                                    {activeTimePickerDestId === dest.id && (
-                                      <>
-                                        <div
-                                          className="fixed inset-0 z-40"
-                                          onClick={(e) => { e.stopPropagation(); setActiveTimePickerDestId(null); }}
-                                        />
-                                        <div
-                                          className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border border-slate-100 z-50 p-3 flex flex-col gap-3 animate-fade-in"
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                          <div className="flex items-center gap-2">
-                                            <div className={`flex-1 bg-slate-50 rounded-lg p-2 border transition-colors ${timeDraft.focus === 'start' ? 'border-indigo-400' : 'border-slate-100'}`}>
-                                              <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Start time</span>
-                                              <input
-                                                type="time"
-                                                value={timeDraft.start}
-                                                onFocus={() => setTimeDraft(d => ({ ...d, focus: 'start' }))}
-                                                onChange={(e) => setTimeDraft(d => ({ ...d, start: e.target.value }))}
-                                                className="w-full bg-transparent outline-none text-sm font-bold text-slate-700"
-                                              />
-                                            </div>
-                                            <span className="text-slate-300 font-medium">—</span>
-                                            <div className={`flex-1 bg-slate-50 rounded-lg p-2 border transition-colors ${timeDraft.focus === 'end' ? 'border-indigo-400' : 'border-slate-100'}`}>
-                                              <span className="text-[10px] font-bold text-slate-400 block mb-0.5">End time</span>
-                                              <input
-                                                type="time"
-                                                value={timeDraft.end}
-                                                onFocus={() => setTimeDraft(d => ({ ...d, focus: 'end' }))}
-                                                onChange={(e) => setTimeDraft(d => ({ ...d, end: e.target.value }))}
-                                                className="w-full bg-transparent outline-none text-sm font-bold text-slate-700"
-                                              />
-                                            </div>
-                                          </div>
-
-                                          <div
-                                            className="h-32 overflow-y-auto border border-slate-100 rounded-lg py-1 custom-scrollbar"
-                                            ref={(el) => {
-                                              if (el && !el.dataset.ready) {
-                                                el.dataset.ready = '1';
-                                                const idx = TIME_OPTIONS.indexOf(timeDraft[timeDraft.focus]);
-                                                el.scrollTop = (idx >= 0 ? idx : 16) * 32;
-                                              }
-                                            }}
-                                          >
-                                            {TIME_OPTIONS.map(t => {
-                                              const selected = t === timeDraft[timeDraft.focus];
-                                              const disabled = timeDraft.focus === 'end' && !!timeDraft.start && t <= timeDraft.start;
-                                              return (
-                                                <div
-                                                  key={t}
-                                                  onClick={() => { if (!disabled) pickTimeSlot(t); }}
-                                                  className={`h-8 px-3 flex items-center text-sm ${
-                                                    disabled ? 'text-slate-300 cursor-not-allowed'
-                                                    : selected ? 'bg-indigo-50 text-indigo-700 font-bold cursor-pointer'
-                                                    : 'text-slate-700 hover:bg-slate-50 cursor-pointer'
-                                                  }`}
-                                                >
-                                                  {t}
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-
-                                          <div className="flex items-center justify-center gap-3 pt-1">
-                                            <button
-                                              onClick={() => {
-                                                handleUpdateDestProperty(day.id, dest.id, 'time', null);
-                                                setActiveTimePickerDestId(null);
-                                              }}
-                                              className="px-5 py-2 bg-slate-100 text-slate-600 font-bold text-sm rounded-full hover:bg-slate-200 transition-colors"
-                                            >
-                                              Xóa
-                                            </button>
-                                            <button
-                                              onClick={() => saveTime(day.id, dest.id)}
-                                              className="px-5 py-2 bg-[#FF5645] text-white font-bold text-sm rounded-full hover:bg-[#E04B3B] transition-colors"
-                                            >
-                                              Lưu
-                                            </button>
-                                          </div>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-
-                                  {(expenseStats.byDest[dest.id] || 0) > 0 ? (
-                                    <button 
-                                      onClick={() => openExpenseDialog({ destinationId: dest.id })}
-                                      className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md text-[12px] font-bold text-indigo-700 transition-colors cursor-pointer"
-                                    >
-                                      {formatVND(expenseStats.byDest[dest.id])}
-                                    </button>
+                            return (
+                              <div 
+                                key={dest.id} 
+                                onClick={(e) => {
+                                  if (e.target.closest('button') || e.target.closest('input')) return;
+                                  handleDestinationClick(dest, idx);
+                                }} 
+                                className={`flex gap-3 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-all ${isActive ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-50'}`}
+                              >
+                                <div className="flex flex-col items-center mt-2 w-8 shrink-0">
+                                  {isVisited ? (
+                                    <div className="w-7 h-7 rounded-full bg-slate-400 text-white flex items-center justify-center shadow-sm">
+                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                    </div>
                                   ) : (
-                                    <button 
-                                      onClick={() => openExpenseDialog({ destinationId: dest.id })} 
-                                      className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 hover:text-slate-800 transition-colors"
-                                    >
-                                      <span className="font-bold text-sm bg-slate-200 w-4 h-4 rounded-full flex items-center justify-center text-[10px]">$</span> Thêm chi phí
-                                    </button>
+                                    <div className={`w-7 h-7 rounded-full text-white text-xs font-extrabold flex items-center justify-center shadow-sm transition-all ${isActive ? 'bg-cyan-500 scale-110' : 'bg-cyan-500/80 group-hover:bg-cyan-500'}`}>
+                                      {idx + 1}
+                                    </div>
+                                  )}
+                                  
+                                  {idx !== day.destinations.length - 1 && (
+                                    <div className="w-[1.5px] h-full bg-slate-200 border-l border-dashed border-slate-300 mt-2 min-h-[30px]"></div>
                                   )}
                                 </div>
-                              )}
 
-                              {!isActive && (dest.timeRange || (expenseStats.byDest[dest.id] || 0) > 0) && (
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                  {dest.timeRange && dest.timeRange.trim() !== '' && <span className="bg-indigo-50 px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700">{dest.timeRange}</span>}
-                                  {(expenseStats.byDest[dest.id] || 0) > 0 && <span className="bg-indigo-50 px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700">{formatVND(expenseStats.byDest[dest.id])}</span>}
+                                <div className={`flex-1 p-3 rounded-2xl transition-all ${isActive ? 'bg-slate-50/80' : 'bg-transparent'}`}>
+                                  
+                                  <div className="flex items-center justify-between mb-1">
+                                    <h4 className={`font-bold text-[15px] transition-colors ${isActive ? 'text-slate-900' : (isVisited ? 'text-slate-600' : 'text-slate-800')}`}>
+                                      {dest.placeName}
+                                    </h4>
+                                    {isActive && <button className="text-slate-300 hover:text-slate-500"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"></path></svg></button>}
+                                  </div>
+
+                                  {isActive ? (
+                                    <input 
+                                      type="text" 
+                                      defaultValue={dest.note || ''} 
+                                      onBlur={(e) => handleUpdateDestProperty(day.id, dest.id, 'note', e.target.value)}
+                                      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                      placeholder="Thêm ghi chú..." 
+                                      className="w-full bg-transparent text-sm text-slate-700 outline-none mb-3 placeholder:text-slate-400 border-b border-transparent focus:border-slate-300 pb-1"
+                                    />
+                                  ) : (
+                                    dest.note && <p className="text-[13px] text-slate-600 mb-2 line-clamp-2">{dest.note}</p>
+                                  )}
+
+                                  {isActive && (
+                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 pt-2 border-t border-slate-200 relative">
+                                      
+                                      <button 
+                                        onClick={() => handleToggleVisited(day, dest, isVisited)}
+                                        className={`flex items-center gap-1.5 text-[13px] font-bold transition-colors ${isVisited ? 'text-slate-400 hover:text-slate-600' : 'text-indigo-600 hover:text-indigo-800'}`}
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                        {isVisited ? 'Bỏ đánh dấu' : 'Đã đi'}
+                                      </button>
+
+                                      <div className="relative">
+                                        {dest.timeRange ? (
+                                          <button 
+                                            onClick={() => openTimePicker(dest)}
+                                            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md text-[12px] font-bold text-indigo-700 transition-colors"
+                                          >
+                                            {dest.timeRange}
+                                          </button>
+                                        ) : (
+                                          <button 
+                                            onClick={() => openTimePicker(dest)}
+                                            className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 hover:text-slate-800 transition-colors"
+                                          >
+                                            <Clock className="w-3.5 h-3.5" /> Thêm giờ
+                                          </button>
+                                        )}
+
+                                        {activeTimePickerDestId === dest.id && (
+                                          <>
+                                            <div
+                                              className="fixed inset-0 z-40"
+                                              onClick={(e) => { e.stopPropagation(); setActiveTimePickerDestId(null); }}
+                                            />
+                                            <div
+                                              className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border border-slate-100 z-50 p-3 flex flex-col gap-3 animate-fade-in"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <div className="flex items-center gap-2">
+                                                <div className={`flex-1 bg-slate-50 rounded-lg p-2 border transition-colors ${timeDraft.focus === 'start' ? 'border-indigo-400' : 'border-slate-100'}`}>
+                                                  <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Start time</span>
+                                                  <input
+                                                    type="time"
+                                                    value={timeDraft.start}
+                                                    onFocus={() => setTimeDraft(d => ({ ...d, focus: 'start' }))}
+                                                    onChange={(e) => setTimeDraft(d => ({ ...d, start: e.target.value }))}
+                                                    className="w-full bg-transparent outline-none text-sm font-bold text-slate-700"
+                                                  />
+                                                </div>
+                                                <span className="text-slate-300 font-medium">—</span>
+                                                <div className={`flex-1 bg-slate-50 rounded-lg p-2 border transition-colors ${timeDraft.focus === 'end' ? 'border-indigo-400' : 'border-slate-100'}`}>
+                                                  <span className="text-[10px] font-bold text-slate-400 block mb-0.5">End time</span>
+                                                  <input
+                                                    type="time"
+                                                    value={timeDraft.end}
+                                                    onFocus={() => setTimeDraft(d => ({ ...d, focus: 'end' }))}
+                                                    onChange={(e) => setTimeDraft(d => ({ ...d, end: e.target.value }))}
+                                                    className="w-full bg-transparent outline-none text-sm font-bold text-slate-700"
+                                                  />
+                                                </div>
+                                              </div>
+
+                                              <div
+                                                className="h-32 overflow-y-auto border border-slate-100 rounded-lg py-1 custom-scrollbar"
+                                                ref={(el) => {
+                                                  if (el && !el.dataset.ready) {
+                                                    el.dataset.ready = '1';
+                                                    const idx = TIME_OPTIONS.indexOf(timeDraft[timeDraft.focus]);
+                                                    el.scrollTop = (idx >= 0 ? idx : 16) * 32; 
+                                                  }
+                                                }}
+                                              >
+                                                {TIME_OPTIONS.map(t => {
+                                                  const selected = t === timeDraft[timeDraft.focus];
+                                                  const disabled = timeDraft.focus === 'end' && !!timeDraft.start && t <= timeDraft.start;
+                                                  return (
+                                                    <div
+                                                      key={t}
+                                                      onClick={() => { if (!disabled) pickTimeSlot(t); }}
+                                                      className={`h-8 px-3 flex items-center text-sm ${
+                                                        disabled ? 'text-slate-300 cursor-not-allowed'
+                                                        : selected ? 'bg-indigo-50 text-indigo-700 font-bold cursor-pointer'
+                                                        : 'text-slate-700 hover:bg-slate-50 cursor-pointer'
+                                                      }`}
+                                                    >
+                                                      {t}
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+
+                                              <div className="flex items-center justify-center gap-3 pt-1">
+                                                <button
+                                                  onClick={() => {
+                                                    handleUpdateDestProperty(day.id, dest.id, 'time', null);
+                                                    setActiveTimePickerDestId(null);
+                                                  }}
+                                                  className="px-5 py-2 bg-slate-100 text-slate-600 font-bold text-sm rounded-full hover:bg-slate-200 transition-colors"
+                                                >
+                                                  Xóa
+                                                </button>
+                                                <button
+                                                  onClick={() => saveTime(day.id, dest.id)}
+                                                  className="px-5 py-2 bg-[#FF5645] text-white font-bold text-sm rounded-full hover:bg-[#E04B3B] transition-colors"
+                                                >
+                                                  Lưu
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+
+                                      {(expenseStats.byDest[dest.id] || 0) > 0 ? (
+                                        <button 
+                                          onClick={() => openExpenseDialog({ destinationId: dest.id })}
+                                          className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md text-[12px] font-bold text-indigo-700 transition-colors cursor-pointer"
+                                        >
+                                          {formatVND(expenseStats.byDest[dest.id])}
+                                        </button>
+                                      ) : (
+                                        <button 
+                                          onClick={() => openExpenseDialog({ destinationId: dest.id })} 
+                                          className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 hover:text-slate-800 transition-colors"
+                                        >
+                                          <span className="font-bold text-sm bg-slate-200 w-4 h-4 rounded-full flex items-center justify-center text-[10px]">$</span> Thêm chi phí
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {!isActive && (dest.timeRange || (expenseStats.byDest[dest.id] || 0) > 0) && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                      {dest.timeRange && dest.timeRange.trim() !== '' && <span className="bg-indigo-50 px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700">{dest.timeRange}</span>}
+                                      {(expenseStats.byDest[dest.id] || 0) > 0 && <span className="bg-indigo-50 px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700">{formatVND(expenseStats.byDest[dest.id])}</span>}
+                                    </div>
+                                  )}
+
+                                  <LegChip leg={routeData[day.id]?.legByFrom?.[dest.id]} />
+
                                 </div>
-                              )}
-
-                              <LegChip leg={routeData[day.id]?.legByFrom?.[dest.id]} />
-                            </div>
-                          </div>
-                        )
-                      })
-                    )}
-                  </div>
-
-                  {addingDayId === day.id ? (
-                    <div ref={searchRef} className="relative mt-4 pl-12">
-                      <div className="flex items-center border border-[#FF5645] rounded-xl px-4 py-3 bg-white shadow-sm ring-4 ring-[#FF5645]/10">
-                        <Search className="w-5 h-5 text-[#FF5645] mr-3" />
-                        <input type="text" autoFocus placeholder="Tìm quán ăn, khách sạn..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-1 outline-none text-base bg-transparent font-medium" />
-                        <button onClick={() => { setAddingDayId(null); setSearchQuery(''); }} className="p-1 hover:bg-slate-100 rounded-full"><X className="w-5 h-5 text-slate-400" /></button>
+                              </div>
+                            )
+                          })
+                        )}
                       </div>
-                      
-                      {suggestions.length > 0 && (
-                        <div className="absolute top-full left-12 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden">
-                          {suggestions.map((place, idx) => (
-                            <div key={idx} onClick={() => handleAddDestination(place, day.id)} className="px-5 py-4 hover:bg-orange-50 cursor-pointer border-b border-slate-50 last:border-0 flex items-start gap-3">
-                              <MapPin className="w-5 h-5 text-[#FF5645] mt-0.5 flex-shrink-0" />
-                              <div><p className="text-base font-bold text-slate-800">{place.name}</p><p className="text-sm text-slate-500 truncate max-w-[300px]">{place.address}</p></div>
+
+                      {addingDayId === day.id ? (
+                        <div ref={searchRef} className="relative mt-4 pl-12">
+                          <div className="flex items-center border border-[#FF5645] rounded-xl px-4 py-3 bg-white shadow-sm ring-4 ring-[#FF5645]/10">
+                            <Search className="w-5 h-5 text-[#FF5645] mr-3" />
+                            <input type="text" autoFocus placeholder="Tìm quán ăn, khách sạn..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-1 outline-none text-base bg-transparent font-medium" />
+                            <button onClick={() => { setAddingDayId(null); setSearchQuery(''); }} className="p-1 hover:bg-slate-100 rounded-full"><X className="w-5 h-5 text-slate-400" /></button>
+                          </div>
+                          
+                          {suggestions.length > 0 && (
+                            <div className="absolute top-full left-12 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden">
+                              {suggestions.map((place, idx) => (
+                                <div key={idx} onClick={() => handleAddDestination(place, day.id)} className="px-5 py-4 hover:bg-orange-50 cursor-pointer border-b border-slate-50 last:border-0 flex items-start gap-3">
+                                  <MapPin className="w-5 h-5 text-[#FF5645] mt-0.5 flex-shrink-0" />
+                                  <div><p className="text-base font-bold text-slate-800">{place.name}</p><p className="text-sm text-slate-500 truncate max-w-[300px]">{place.address}</p></div>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
+                        </div>
+                      ) : (
+                        <div className="pl-12 mt-2">
+                          <button onClick={() => setAddingDayId(day.id)} className="w-full py-3 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 text-sm font-bold hover:border-[#FF5645] hover:text-[#FF5645] hover:bg-orange-50/50 transition-colors flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> Add place to Day {day.dayNumber}</button>
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="pl-12 mt-2">
-                      <button onClick={() => setAddingDayId(day.id)} className="w-full py-3 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 text-sm font-bold hover:border-[#FF5645] hover:text-[#FF5645] hover:bg-orange-50/50 transition-colors flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> Add place to Day {day.dayNumber}</button>
-                    </div>
-                  )}
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           </div>
         )}
@@ -1523,8 +1715,30 @@ const TripDetail = () => {
       </div>
 
       {/* ================= CỘT 3. BẢN ĐỒ VÀ PANEL CHI TIẾT ĐỊA ĐIỂM ================= */}
-{/* ================= CỘT 3. BẢN ĐỒ VÀ PANEL CHI TIẾT ĐỊA ĐIỂM ================= */}
-      <div className="hidden md:block w-1/3 lg:w-[45%] relative z-0 border-l border-slate-200">        {/* PANEL TRƯỢT (NỔI TRÊN BẢN ĐỒ) */}
+      <div
+        className={`hidden md:block relative z-0 border-l border-slate-200 flex-shrink-0 ${isResizingMap ? '' : 'transition-[width] duration-200'}`}
+        style={activeSection === 'itinerary'
+          ? { width: `${mapPanelWidth}px`, flex: `0 0 ${mapPanelWidth}px` }
+          : { width: '45%', flex: '0 0 45%' }}
+      >
+        {activeSection === 'itinerary' && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Kéo để thay đổi chiều rộng bản đồ"
+            title="Kéo để thay đổi chiều rộng bản đồ · Nhấp đúp để đặt lại"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              mapResizeStartRef.current = { x: event.clientX, width: mapPanelWidth };
+              setIsResizingMap(true);
+            }}
+            onDoubleClick={() => setMapPanelWidth(460)}
+            className="absolute -left-[6px] top-0 bottom-0 z-[1300] w-3 cursor-col-resize touch-none flex items-center justify-center group"
+          >
+            <span className="h-20 w-1 rounded-full bg-slate-300 group-hover:bg-[#FF5645] group-active:bg-[#FF5645] transition-colors shadow-sm" />
+          </div>
+        )}
+        {/* PANEL TRƯỢT (NỔI TRÊN BẢN ĐỒ) */}
         <div className={`absolute top-4 left-4 bottom-4 w-[400px] bg-white rounded-3xl shadow-2xl z-[1000] border border-slate-100 flex flex-col overflow-hidden transition-transform duration-500 ease-in-out ${activeDestination && isPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[120%] opacity-0 pointer-events-none'}`}>
           {activeDestination && (
             <>
@@ -1756,8 +1970,12 @@ const TripDetail = () => {
 
         {/* BẢN ĐỒ LEAFLET CHÍNH */}
         <MapContainer center={[16.047079, 108.206230]} zoom={5} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-          <TileLayer url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}" attribution='&copy; Google Maps' />
-          
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
+            maxZoom={19}
+          />
+          <MapSizeObserver resizeKey={activeSection} />
           <MapBounds
             points={mapStops.map(s => [s.lat, s.lng])}
             boundsKey={boundsKey}
@@ -1792,6 +2010,13 @@ const TripDetail = () => {
             />
           ))}
         </MapContainer>
+        {unmappedDestinations.length > 0 && (
+          <div className="absolute left-4 right-4 bottom-4 z-[900] rounded-xl bg-white/95 border border-amber-200 shadow-lg px-3 py-2 text-xs text-amber-800">
+            <strong>{unmappedDestinations.length} địa điểm chưa xác định được tọa độ:</strong>{' '}
+            {unmappedDestinations.slice(0, 3).join(', ')}
+            {unmappedDestinations.length > 3 ? '…' : ''}
+          </div>
+        )}
       </div>
 
       {/* ================= DIALOG THÊM CHI PHÍ ================= */}
@@ -2193,7 +2418,7 @@ const TripDetail = () => {
 
             <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Trải nghiệm của bạn tại đây</h3>
 
-         {/* Thẻ địa điểm + chip ngày/giờ */}
+            {/* Thẻ địa điểm + chip ngày/giờ */}
             <div className="bg-slate-100 rounded-2xl p-4 mb-5">
               <p className="font-extrabold text-slate-900 mb-2">{visitDialog.dest.placeName}</p>
               <div className="flex flex-wrap gap-2">
@@ -2247,11 +2472,12 @@ const TripDetail = () => {
         </div>
       )}
 
-      {/* === THÊM BONG BÓNG CHAT AI Ở ĐÂY (SAU KHI ĐÓNG visitDialog) === */}
-      {trip && (
+      {/* AI Travel Assistant dạng bong bóng nổi, dùng được ở mọi tab của TripDetail. */}
+      {trip?.id && (
         <AiAssistantChat
+          tripId={trip.id}
           trip={trip}
-          onDestinationAdded={fetchTripDetails}
+          onTripUpdated={fetchTripDetails}
         />
       )}
     </div>
