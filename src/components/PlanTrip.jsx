@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import { Calendar, Users, ChevronDown, X, Compass, MapPin } from 'lucide-react';
+import { Calendar, Users, ChevronDown, X, Compass, MapPin, AlertCircle  } from 'lucide-react';
 
 
 const PlanTrip = () => {
@@ -30,6 +30,8 @@ const PlanTrip = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
+  const [companionError, setCompanionError] = useState('');
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   // Xử lý Debounce gọi API Địa điểm (ĐÃ CHUYỂN SANG DÙNG PHOTON BỀN BỈ HƠN)
   useEffect(() => {
     const fetchPlaces = async () => {
@@ -104,24 +106,52 @@ const PlanTrip = () => {
     setShowDropdown(false);
   };
 
-  const handleAddCompanion = (e) => {
-    e.preventDefault();
-    const email = companionInput.trim().toLowerCase();
-    if (!email) return;
+  // Hỏi backend xem email đã có tài khoản chưa
+const isEmailRegistered = async (email) => {
+  const token = localStorage.getItem('token');
+  const res = await axios.get('http://localhost:8080/api/trips/check-email', {
+    params: { email },
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data?.exists === true;
+};
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setErrorMsg('Email không hợp lệ.');
+const handleAddCompanion = async (e) => {
+  e.preventDefault();
+  if (isCheckingEmail) return;
+
+  const email = companionInput.trim().toLowerCase();
+  if (!email) return;
+  setCompanionError('');
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    setCompanionError('Email không hợp lệ.');
+    return;
+  }
+  if (companionEmails.includes(email)) {
+    setCompanionError('Email này đã có trong danh sách.');
+    return;
+  }
+
+  setIsCheckingEmail(true);
+  try {
+    const registered = await isEmailRegistered(email);
+    if (!registered) {
+      setCompanionError(
+        `Email ${email} chưa đăng ký tài khoản. Hãy mời họ đăng ký trước khi thêm vào chuyến đi.`
+      );
       return;
     }
-    if (companionEmails.includes(email)) {
-      setErrorMsg('Email đã tồn tại.');
-      return;
-    }
-    setCompanionEmails([...companionEmails, email]);
+    setCompanionEmails((prev) => [...prev, email]);
     setCompanionInput('');
-    setErrorMsg('');
-  };
+  } catch (error) {
+    console.error('Lỗi kiểm tra email:', error);
+    setCompanionError('Không thể kiểm tra email lúc này, vui lòng thử lại.');
+  } finally {
+    setIsCheckingEmail(false);
+  }
+};
 
   const handleRemoveCompanion = (emailToRemove) => {
     setCompanionEmails(companionEmails.filter((item) => item !== emailToRemove));
@@ -147,6 +177,35 @@ const PlanTrip = () => {
       return;
     }
 
+    // Nếu đã gõ email nhưng chưa nhấn Enter thì vẫn kiểm tra và tính vào danh sách
+    setCompanionError('');
+    const finalCompanionEmails = [...companionEmails];
+    const pendingEmail = companionInput.trim().toLowerCase();
+    if (pendingEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(pendingEmail)) {
+        setCompanionError('Email không hợp lệ.');
+        return;
+      }
+      if (!finalCompanionEmails.includes(pendingEmail)) {
+        try {
+          const registered = await isEmailRegistered(pendingEmail);
+          if (!registered) {
+            setCompanionError(
+              `Email ${pendingEmail} chưa đăng ký tài khoản. Hãy mời họ đăng ký trước khi thêm vào chuyến đi.`
+            );
+            return;
+          }
+        } catch (error) {
+          console.error('Lỗi kiểm tra email:', error);
+          setCompanionError('Không thể kiểm tra email lúc này, vui lòng thử lại.');
+          return;
+        }
+        finalCompanionEmails.push(pendingEmail);
+      }
+    }
+
+    
     setIsLoading(true);
 
     try {
@@ -158,8 +217,8 @@ const PlanTrip = () => {
         totalBudget: budgetValue,
         visibility: visibility,
         isPublic: visibility === 'PUBLIC',
-        memberCount: companionEmails.length + 1, 
-        companionEmails: companionEmails,
+        memberCount: finalCompanionEmails.length + 1,
+        companionEmails: finalCompanionEmails,
       };
 
       const response = await axios.post('http://localhost:8080/api/trips', payload, {
@@ -308,12 +367,25 @@ const PlanTrip = () => {
               <input
                 type="email"
                 value={companionInput}
-                onChange={(e) => setCompanionInput(e.target.value)}
+                onChange={(e) => {
+                  setCompanionInput(e.target.value);
+                  if (companionError) setCompanionError('');
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddCompanion(e)}
                 placeholder="Enter email to invite..."
                 className="outline-none flex-1 text-gray-700 font-medium placeholder-gray-400 bg-transparent min-w-[200px]"
               />
+              {isCheckingEmail && (
+                <span className="ml-3 whitespace-nowrap text-xs font-medium text-gray-400">Đang kiểm tra...</span>
+              )}
             </div>
+
+            {companionError && (
+              <p className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-600">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>{companionError}</span>
+              </p>
+            )}
             
             {companionEmails.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2.5 pt-3 border-t border-gray-100">

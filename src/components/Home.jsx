@@ -14,7 +14,9 @@ import {
   ArrowUpRight,
   MoreHorizontal,
   Share2,
-  Plus
+  Plus,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 
 const FEATURES = [
@@ -55,6 +57,9 @@ const Home = () => {
   // State lưu danh sách chuyến đi cá nhân
   const [myTrips, setMyTrips] = useState([]);
   const [loadingTrips, setLoadingTrips] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState(null);   // id trip đang mở menu 3 chấm
+  const [deletingId, setDeletingId] = useState(null);   // id trip đang xóa
+  const [dialog, setDialog] = useState(null);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
@@ -69,6 +74,21 @@ const Home = () => {
     }
   }, []);
 
+  useEffect(() => {
+  if (openMenuId === null) return;
+  const close = () => setOpenMenuId(null);
+  document.addEventListener('click', close);
+  return () => document.removeEventListener('click', close);
+}, [openMenuId]);
+
+  useEffect(() => {
+    if (!dialog) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape' && deletingId === null) setDialog(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dialog, deletingId]);
   const isLoggedIn = Boolean(user);
 
   // Hàm gọi API lấy danh sách chuyến đi của Tôi
@@ -90,6 +110,45 @@ const Home = () => {
       setLoadingTrips(false);
     }
   };
+
+  // Bấm "Xóa chuyến đi" trong menu -> mở dialog xác nhận
+const handleDeleteTrip = (e, trip) => {
+  e.stopPropagation();
+  setOpenMenuId(null);
+  setDialog({ type: 'confirm', trip });
+};
+
+// Không cho đóng dialog khi đang gọi API xóa
+const closeDialog = () => {
+  if (deletingId === null) setDialog(null);
+};
+
+// Bấm "Xóa" trong dialog -> gọi API
+const confirmDeleteTrip = async () => {
+  const trip = dialog?.trip;
+  if (!trip) return;
+
+  const token = localStorage.getItem('token');
+  setDeletingId(trip.id);
+  try {
+    await axios.delete(`http://localhost:8080/api/trips/${trip.id}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    setMyTrips((prev) => prev.filter((t) => t.id !== trip.id));
+    setDialog(null);
+  } catch (error) {
+    console.error('Lỗi xóa chuyến đi:', error);
+    setDialog({
+      type: 'error',
+      message:
+        typeof error.response?.data === 'string'
+          ? error.response.data
+          : 'Không thể xóa chuyến đi, vui lòng thử lại.'
+    });
+  } finally {
+    setDeletingId(null);
+  }
+};
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -259,22 +318,50 @@ const Home = () => {
                       }}
                     />
                     
-                    {/* Lớp phủ & Nút hành động (Có stopPropagation để ngăn click lan ra ngoài) */}
-                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-start justify-end p-3 gap-2">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); /* Ngăn click mở trang */ }} 
-                        className="h-8 w-8 rounded-full bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center hover:bg-white hover:text-[#FF5645] transition-colors shadow-sm" 
+                    {/* Lớp phủ & Nút hành động */}
+                    <div
+                      className={`absolute inset-0 bg-black/20 transition-opacity flex items-start justify-end p-3 gap-2 ${
+                        openMenuId === trip.id || deletingId === trip.id
+                          ? 'opacity-100'
+                          : 'opacity-0 group-hover:opacity-100'
+                      }`}
+                    >
+                      <button
+                        onClick={(e) => { e.stopPropagation(); }}
+                        className="h-8 w-8 rounded-full bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center hover:bg-white hover:text-[#FF5645] transition-colors shadow-sm"
                         title="Share trip"
                       >
                         <Share2 className="h-4 w-4" />
                       </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); /* Ngăn click mở trang */ }} 
-                        className="h-8 w-8 rounded-full bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center hover:bg-white transition-colors shadow-sm" 
-                        title="Options"
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
+
+                      <div className="relative">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuId(openMenuId === trip.id ? null : trip.id);
+                          }}
+                          className="h-8 w-8 rounded-full bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center hover:bg-white transition-colors shadow-sm"
+                          title="Options"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+
+                        {openMenuId === trip.id && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute right-0 top-10 z-20 w-40 overflow-hidden rounded-xl border border-slate-100 bg-white py-1 shadow-lg"
+                          >
+                            <button
+                              onClick={(e) => handleDeleteTrip(e, trip)}
+                              disabled={deletingId === trip.id}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              {deletingId === trip.id ? 'Đang xóa...' : 'Xóa chuyến đi'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -357,6 +444,74 @@ const Home = () => {
       <footer className="border-t border-slate-100 px-6 py-10 text-center text-sm font-medium text-slate-400">
         © 2026 TravelPlatform. Khám phá thế giới theo cách của bạn.
       </footer>
+            {/* ===================== DIALOG (XÁC NHẬN / BÁO LỖI) ===================== */}
+      {dialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 backdrop-blur-sm"
+          onClick={closeDialog}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-500">
+              {dialog.type === 'confirm' ? (
+                <Trash2 className="h-6 w-6" />
+              ) : (
+                <AlertTriangle className="h-6 w-6" />
+              )}
+            </div>
+
+            <h3 className="mt-4 text-center text-lg font-extrabold text-slate-900">
+              {dialog.type === 'confirm' ? 'Xóa chuyến đi?' : 'Không thể xóa chuyến đi'}
+            </h3>
+
+            <p className="mt-2 text-center text-sm leading-relaxed text-slate-500">
+              {dialog.type === 'confirm' ? (
+                <>
+                  Chuyến đi{' '}
+                  <span className="font-semibold text-slate-700">"{dialog.trip.title}"</span>{' '}
+                  cùng toàn bộ lịch trình, chi tiêu và đánh giá sẽ bị xóa vĩnh viễn.
+                  Hành động này không thể hoàn tác.
+                </>
+              ) : (
+                dialog.message
+              )}
+            </p>
+
+            {dialog.type === 'confirm' ? (
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={closeDialog}
+                  disabled={deletingId !== null}
+                  className="flex-1 rounded-full border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={confirmDeleteTrip}
+                  disabled={deletingId !== null}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-full bg-red-500 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-red-600 disabled:opacity-70"
+                >
+                  {deletingId !== null && (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  )}
+                  {deletingId !== null ? 'Đang xóa...' : 'Xóa'}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={closeDialog}
+                className="mt-6 w-full rounded-full bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-slate-800"
+              >
+                Đóng
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
