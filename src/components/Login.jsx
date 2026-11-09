@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
+import { getHomePathForRole, normalizeRole } from '../utils/auth';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -77,12 +78,15 @@ const Login = () => {
 
       // Lưu thông tin người dùng nếu có
       if (data && typeof data === 'object') {
+        const role = normalizeRole(data.role);
+
         const userInfo = {
           id: data.id,
           email: data.email || trimmedEmail,
           fullName: data.fullName || 'Khách du lịch',
-          role: data.role || 'USER',
+          role,
         };
+
         localStorage.setItem('user', JSON.stringify(userInfo));
       }
 
@@ -95,8 +99,10 @@ const Login = () => {
 
       setSuccessMessage('Đăng nhập thành công! Đang chuyển hướng vào hệ thống...');
 
+      const targetPath = getHomePathForRole(data.role);
+
       setTimeout(() => {
-        navigate('/home');
+        navigate(targetPath, { replace: true });
       }, 700);
     } catch (error) {
       console.error('Lỗi khi đăng nhập:', error);
@@ -120,39 +126,52 @@ const Login = () => {
     }
   };
 
-  // Xử lý Đăng nhập Google
+  // Xử lý đăng nhập Google
   const handleGoogleSuccess = async (credentialResponse) => {
     try {
       const googleToken = credentialResponse.credential;
 
-      const response = await axios.post('http://localhost:8080/api/auth/google', {
-        token: googleToken,
-      });
+      const response = await axios.post(
+        'http://localhost:8080/api/auth/google',
+        {
+          token: googleToken,
+        }
+      );
 
-      // Lưu token + thông tin user giống hệt luồng đăng nhập thường —
-      // trước đây chỉ lưu token nên Home.jsx (dựa vào key 'user' để biết
-      // đã đăng nhập hay chưa) vẫn hiển thị như khách dù đã có token.
       const data = response.data;
       const token = data?.token || data?.accessToken;
 
-      if (token) {
-        localStorage.setItem('token', token);
+      // Kiểm tra token
+      if (!token) {
+        throw new Error('Backend không trả về token đăng nhập.');
       }
 
+      localStorage.setItem('token', token);
+
+      // Lưu thông tin người dùng và phân quyền
       if (data && typeof data === 'object') {
+        const role = normalizeRole(data.role);
+
         const userInfo = {
           id: data.id,
           email: data.email,
           fullName: data.fullName || 'Khách du lịch',
-          role: data.role || 'USER',
+          role: role,
         };
-        localStorage.setItem('user', JSON.stringify(userInfo));
-      }
 
-      navigate('/home');
+        localStorage.setItem('user', JSON.stringify(userInfo));
+
+        // Điều hướng theo quyền tài khoản
+        navigate(getHomePathForRole(role), {
+          replace: true,
+        });
+      }
     } catch (error) {
       console.error('Lỗi gửi token xuống Backend:', error);
-      setErrorMessage('Đăng nhập Google thất bại. Vui lòng thử lại.');
+
+      setErrorMessage(
+        error.message || 'Đăng nhập Google thất bại. Vui lòng thử lại.'
+      );
     }
   };
 

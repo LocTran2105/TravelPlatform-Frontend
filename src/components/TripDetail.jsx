@@ -1716,8 +1716,7 @@ const TripDetail = () => {
 
       {/* ================= CỘT 3. BẢN ĐỒ VÀ PANEL CHI TIẾT ĐỊA ĐIỂM ================= */}
       <div
-        className={`hidden md:block relative z-0 border-l border-slate-200 flex-shrink-0 ${isResizingMap ? '' : 'transition-[width] duration-200'}`}
-        style={activeSection === 'itinerary'
+          className={`hidden md:block relative z-0 h-full min-h-0 overflow-hidden border-l border-slate-200 flex-shrink-0 ${isResizingMap ? '' : 'transition-[width] duration-200'}`}        style={activeSection === 'itinerary'
           ? { width: `${mapPanelWidth}px`, flex: `0 0 ${mapPanelWidth}px` }
           : { width: '45%', flex: '0 0 45%' }}
       >
@@ -1971,9 +1970,8 @@ const TripDetail = () => {
         {/* BẢN ĐỒ LEAFLET CHÍNH */}
         <MapContainer center={[16.047079, 108.206230]} zoom={5} style={{ height: '100%', width: '100%' }} zoomControl={false}>
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
-            maxZoom={19}
+            url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
+            attribution="&copy; Google Maps"
           />
           <MapSizeObserver resizeKey={activeSection} />
           <MapBounds

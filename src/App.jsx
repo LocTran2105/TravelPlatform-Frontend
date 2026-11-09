@@ -1,6 +1,15 @@
+
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import axios from 'axios';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from 'react-router-dom';
+
+import axiosClient from './api/axiosClient';
+
+// Traveller
 import Home from './components/Home';
 import Login from './components/Login';
 import Register from './components/Register';
@@ -10,35 +19,34 @@ import PlanTrip from './components/PlanTrip';
 import TripDetail from './components/TripDetail';
 import Community from './components/Community';
 
-// Interceptor toàn cục: gặp 401 thì xoá thông tin đăng nhập và về /login
-axios.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
-      console.warn("Token hết hạn hoặc không hợp lệ. Đang đăng xuất...");
+// Phân quyền và Layout
+import ProtectedRoute from './routes/ProtectedRoute';
+import PartnerLayout from './layouts/PartnerLayout';
+import AdminLayout from './layouts/AdminLayout';
 
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+// Partner
+import PartnerApplication from './pages/partner/PartnerApplication';
+import PartnerDashboard from './pages/partner/PartnerDashboard';
+import PartnerBusiness from './pages/partner/PartnerBusiness';
+import PartnerSubmissions from './pages/partner/PartnerSubmissions';
 
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
-    }
-    return Promise.reject(error);
-  }
-);
+// Admin
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminApplications from './pages/admin/AdminApplications';
+import AdminSubmissions from './pages/admin/Adminsubmissions';
+
+// CSS
+import './styles/partner-admin.css';
+import './styles/portal-typography.css';
 
 function App() {
-  // Xác thực ngầm khi mở app: gọi API bắt buộc đăng nhập để kiểm tra
-  // token còn hợp lệ và user còn tồn tại trong DB.
-  // Nếu backend trả 401, interceptor ở trên sẽ tự đăng xuất.
+  // Kiểm tra JWT khi mở ứng dụng
   useEffect(() => {
     const token = localStorage.getItem('token');
+
     if (token) {
-      axios.get('http://localhost:8080/api/users/profile', {
-        headers: { Authorization: `Bearer ${token}` }
-      }).catch(() => {
-        // Không cần xử lý ở đây, interceptor đã lo phần 401
+      axiosClient.get('/api/users/profile').catch(() => {
+        // axiosClient xử lý trường hợp 401.
       });
     }
   }, []);
@@ -46,18 +54,87 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+
+        {/* ================= PUBLIC / TRAVELLER ================= */}
+
         <Route path="/" element={<Home />} />
         <Route path="/home" element={<Home />} />
+
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+
         <Route path="/profile" element={<Profile />} />
         <Route path="/plan" element={<PlanTrip />} />
         <Route path="/trips/:tripId" element={<TripDetail />} />
         <Route path="/community" element={<Community />} />
 
-        {/* Đường dẫn không hợp lệ -> quay về trang chủ */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+
+        {/* ================= PARTNER APPLICATION ================= */}
+
+        <Route
+          path="/partner-application"
+          element={
+            <ProtectedRoute allowedRoles={['ROLE_TRAVELLER']}>
+              <PartnerApplication />
+            </ProtectedRoute>
+          }
+        />
+
+
+        {/* ================= PARTNER PORTAL ================= */}
+
+        <Route
+          element={
+            <ProtectedRoute allowedRoles={['ROLE_PARTNER']}>
+              <PartnerLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/partner" element={<PartnerDashboard />} />
+
+          <Route
+            path="/partner/businesses"
+            element={<PartnerBusiness />}
+          />
+
+          <Route
+            path="/partner/submissions"
+            element={<PartnerSubmissions />}
+          />
+        </Route>
+
+
+        {/* ================= ADMIN PORTAL ================= */}
+
+        <Route
+          element={
+            <ProtectedRoute allowedRoles={['ROLE_ADMIN']}>
+              <AdminLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/admin" element={<AdminDashboard />} />
+
+          <Route
+            path="/admin/applications"
+            element={<AdminApplications />}
+          />
+
+          <Route
+            path="/admin/submissions"
+            element={<AdminSubmissions />}
+          />
+        </Route>
+
+
+        {/* ================= NOT FOUND ================= */}
+
+        <Route
+          path="*"
+          element={<Navigate to="/" replace />}
+        />
+
       </Routes>
     </BrowserRouter>
   );

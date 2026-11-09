@@ -1,0 +1,145 @@
+/*
+ * Travel Platform - shared typography for Partner/Admin portals.
+ * Import this file AFTER partner-admin.css in App.jsx.
+ * It inherits the same font family as the Traveller UI from index.css/body.
+ */
+
+.portal-shell,
+.portal-shell * ,
+.portal-shell *::before,
+.portal-shell *::after,
+.partner-application-page,
+.partner-application-page *,
+.partner-application-page *::before,
+.partner-application-page *::after {
+  font-family: inherit;
+}
+
+/* Base reading size and rhythm: align portal copy with the Traveller pages. */
+.portal-shell,
+.partner-application-page {
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Page headings */
+.portal-page-heading h1 {
+  font-size: clamp(27px, 2.4vw, 32px) !important;
+  line-height: 1.2 !important;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+
+.portal-page-heading p,
+.partner-app-hero-copy > p {
+  font-size: 15px !important;
+  line-height: 1.7 !important;
+}
+
+.portal-eyebrow,
+.partner-app-kicker,
+.partner-app-section-kicker {
+  font-size: 11px !important;
+  line-height: 1.45;
+  letter-spacing: 0.12em;
+}
+
+/* Sidebar and top navigation */
+.portal-brand strong { font-size: 15px !important; }
+.portal-brand span { font-size: 12px !important; }
+.portal-sidebar-caption { font-size: 11px !important; }
+.portal-nav-link { font-size: 14px !important; line-height: 1.5; }
+.portal-role-chip,
+.portal-logout { font-size: 13px !important; }
+.portal-topbar-title { font-size: 16px !important; }
+.portal-topbar-subtitle { font-size: 13px !important; }
+.portal-account-info strong { font-size: 14px !important; }
+.portal-account-info span { font-size: 12px !important; }
+.portal-avatar { font-size: 15px !important; }
+
+/* Buttons, labels and form controls */
+.portal-primary-button,
+.portal-secondary-button,
+.portal-small-button,
+.portal-icon-button {
+  font-family: inherit;
+}
+.portal-primary-button,
+.portal-secondary-button { font-size: 14px !important; min-height: 44px; }
+.portal-small-button { font-size: 13px !important; }
+.portal-field > span,
+.partner-app-field > span { font-size: 14px !important; line-height: 1.5; }
+.portal-field input,
+.portal-field select,
+.portal-field textarea,
+.portal-filter-row select,
+.partner-app-field input,
+.partner-app-field textarea {
+  font-size: 15px !important;
+  line-height: 1.5 !important;
+}
+.portal-field input,
+.portal-field select,
+.partner-app-field input { min-height: 48px; }
+.portal-field textarea,
+.partner-app-field textarea { min-height: 120px; }
+.portal-form-hint,
+.partner-app-field small,
+.partner-app-required-note { font-size: 13px !important; line-height: 1.6; }
+.portal-alert,
+.partner-app-feedback { font-size: 14px !important; line-height: 1.6; }
+
+/* Cards and dashboard data */
+.portal-stat-label { font-size: 13px !important; line-height: 1.5; }
+.portal-stat-value { font-size: 30px !important; line-height: 1.15; }
+.portal-panel h3,
+.partner-app-form-section-title h3 { font-size: 17px !important; line-height: 1.35; }
+.portal-welcome-copy h2,
+.portal-table-heading h2,
+.partner-app-card-heading h2,
+.partner-app-history-heading h2 { font-size: 20px !important; line-height: 1.35; }
+.portal-welcome-copy p,
+.portal-steps small,
+.portal-note-panel p,
+.portal-action-card p { font-size: 13px !important; line-height: 1.65; }
+.portal-steps strong,
+.portal-action-card strong { font-size: 14px !important; }
+
+/* Data tables and status labels */
+.portal-table th { font-size: 11px !important; line-height: 1.45; }
+.portal-table td,
+.portal-table td strong { font-size: 14px !important; line-height: 1.5; }
+.portal-table td small { font-size: 12px !important; }
+.portal-status { font-size: 12px !important; line-height: 1.4; }
+.portal-muted-label,
+.portal-filter-row { font-size: 13px !important; }
+.portal-empty { font-size: 14px !important; line-height: 1.6; }
+.portal-empty strong { font-size: 16px !important; }
+
+/* Partner application page typography */
+.partner-app-hero h1 {
+  font-size: clamp(32px, 3.3vw, 42px) !important;
+  line-height: 1.18 !important;
+}
+.partner-app-hero-points span { font-size: 14px !important; }
+.partner-app-art-card-back > span { font-size: 12px !important; }
+.partner-app-art-card-back > strong { font-size: 16px !important; }
+.partner-app-art-card-front strong { font-size: 15px !important; }
+.partner-app-art-card-front span { font-size: 12px !important; }
+.partner-app-form-section-title p,
+.partner-app-card-heading p,
+.partner-app-history-heading p,
+.partner-app-pending-banner p { font-size: 13px !important; line-height: 1.65; }
+.partner-app-form-section-title > span { font-size: 13px !important; }
+.partner-app-pending-banner strong { font-size: 16px !important; }
+.partner-app-history-count { font-size: 12px !important; }
+
+@media (max-width: 760px) {
+  .portal-content { padding: 22px 16px 36px; }
+  .portal-page-heading h1 { font-size: 27px !important; }
+  .partner-app-hero h1 { font-size: 31px !important; }
+  .portal-table td,
+  .portal-table td strong { font-size: 13px !important; }
+}
