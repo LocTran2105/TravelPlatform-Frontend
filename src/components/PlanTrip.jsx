@@ -417,9 +417,10 @@ const handleAddCompanion = async (e) => {
                 onChange={(e) => setVisibility(e.target.value)}
                 className="appearance-none bg-transparent font-bold outline-none cursor-pointer pr-7 text-sm w-full"
               >
-                <option value="PRIVATE">Private (Only you & mates)</option>
-                <option value="FRIENDS">Friends (Your followers)</option>
-                <option value="PUBLIC">Public (Community)</option>
+                <option value="PRIVATE">🔒 Private (Only you & mates)</option>
+                <option value="FOLLOWERS">👥 Followers (People who follow you)</option>
+                <option value="FRIENDS">🤝 Friends (You follow each other)</option>
+                <option value="PUBLIC">🌎 Public (Community)</option>
               </select>
               <ChevronDown className="w-4 h-4 absolute right-3 text-gray-400 pointer-events-none" />
             </div>

@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import { User, Lock, Mail, Phone, Compass, ArrowLeft, Camera, CheckCircle2, AlertCircle } from 'lucide-react';
+import { User, Lock, Mail, Phone, Compass, ArrowLeft, Camera, CheckCircle2, AlertCircle, AtSign } from 'lucide-react';
+
+const USERNAME_REGEX = /^[a-z0-9][a-z0-9._-]{1,8}[a-z0-9]$/;
 
 const Profile = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('info'); // 'info' hoặc 'password'
   
-  const [formData, setFormData] = useState({ fullName: '', phoneNumber: '' });
+  const [formData, setFormData] = useState({ fullName: '', phoneNumber: '', username: '' });
   const [passwordData, setPasswordData] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
   
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -27,27 +29,65 @@ const Profile = () => {
     setUser(parsedUser);
     setFormData({
       fullName: parsedUser.fullName || '',
-      phoneNumber: parsedUser.phoneNumber || ''
+      phoneNumber: parsedUser.phoneNumber || '',
+      username: parsedUser.username || ''
     });
+
+    // localStorage chỉ lưu id/email/fullName/role lúc đăng nhập,
+    // nên tải hồ sơ đầy đủ (số điện thoại, username...) từ server.
+    axios
+      .get('http://localhost:8080/api/users/profile', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then((res) => {
+        const data = res.data || {};
+        const merged = {
+          ...parsedUser,
+          fullName: data.fullName ?? parsedUser.fullName,
+          phoneNumber: data.phoneNumber ?? parsedUser.phoneNumber ?? '',
+          username: data.username ?? parsedUser.username ?? '',
+          avatar: data.avatar ?? parsedUser.avatar
+        };
+        localStorage.setItem('user', JSON.stringify(merged));
+        setUser(merged);
+        setFormData({
+          fullName: merged.fullName || '',
+          phoneNumber: merged.phoneNumber || '',
+          username: merged.username || ''
+        });
+      })
+      .catch((error) => {
+        // Lỗi 401 đã được interceptor trong App.jsx xử lý
+        console.error('Lỗi tải hồ sơ người dùng:', error);
+      });
   }, [navigate]);
 
   const handleUpdateInfo = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
     setMessage({ type: '', text: '' });
 
+    const username = formData.username.trim().toLowerCase();
+    if (!USERNAME_REGEX.test(username)) {
+      setMessage({
+        type: 'error',
+        text: 'Username dài 3–10 ký tự, chỉ gồm chữ thường, số và . _ - ; phải bắt đầu và kết thúc bằng chữ hoặc số (không có khoảng trắng).'
+      });
+      return;
+    }
+
+    setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      // Gọi API cập nhật thông tin
-      const res = await axios.put('http://localhost:8080/api/users/profile', formData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.put(
+        'http://localhost:8080/api/users/profile',
+        { ...formData, username },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-      // Cập nhật localStorage
-      const updatedUser = { ...user, fullName: formData.fullName, phoneNumber: formData.phoneNumber };
+      const updatedUser = { ...user, fullName: formData.fullName, phoneNumber: formData.phoneNumber, username };
       localStorage.setItem('user', JSON.stringify(updatedUser));
       setUser(updatedUser);
-      
+      setFormData((prev) => ({ ...prev, username }));
       setMessage({ type: 'success', text: 'Cập nhật thông tin thành công!' });
     } catch (error) {
       setMessage({ type: 'error', text: error.response?.data || 'Có lỗi xảy ra khi cập nhật.' });
@@ -100,7 +140,7 @@ const Profile = () => {
       </header>
 
       <main className="mx-auto mt-8 max-w-5xl px-6 pb-20">
-        <h1 className="text-2xl font-bold text-slate-900">Quản lý tài khoản</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Chỉnh sửa thông tin</h1>
         
         <div className="mt-6 flex flex-col gap-8 md:flex-row">
           {/* Sidebar Tabs */}
@@ -173,6 +213,27 @@ const Profile = () => {
                     <Phone className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
                     <input type="tel" value={formData.phoneNumber} onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none" />
                   </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-700">Username</label>
+                  <div className="relative">
+                    <AtSign className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      value={formData.username}
+                      onChange={(e) =>
+                        setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/\s/g, '') })
+                      }
+                      maxLength={10}
+                      required
+                      placeholder="vd: loc.106"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none"
+                    />
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    3–10 ký tự: chữ thường, số và . _ - ; bắt đầu/kết thúc bằng chữ hoặc số; không có khoảng trắng, không phân biệt hoa thường.
+                  </p>
                 </div>
 
                 <button type="submit" disabled={isLoading} className="mt-4 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60">

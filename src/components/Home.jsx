@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
   Compass,
-  Search,
   Users,
   MapPin,
   Receipt,
@@ -18,7 +17,8 @@ import {
   Trash2,
   AlertTriangle
 } from 'lucide-react';
-
+import UserMenu from './UserMenu';
+import UserSearchBox from './UserSearchBox';
 const FEATURES = [
   {
     icon: MapPin,
@@ -51,7 +51,6 @@ const FEATURES = [
 const Home = () => {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState(null);
   
   // State lưu danh sách chuyến đi cá nhân
@@ -203,49 +202,21 @@ const confirmDeleteTrip = async () => {
             </nav>
           </div>
 
-          <form className="hidden max-w-md flex-1 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 transition-colors focus-within:border-[#FF5645] focus-within:bg-white md:flex">
-            <Search className="h-4 w-4 flex-shrink-0 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search places or users..."
-              className="w-full bg-transparent text-sm text-slate-700 placeholder-slate-400 focus:outline-none"
-            />
-          </form>
+          <UserSearchBox />
 
         <div className="ml-auto hidden items-center gap-3 md:flex">
-{isLoggedIn ? (
-              <>
-                {/* Nút bấm vào trang Profile */}
-                <Link
-                  to="/profile"
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-slate-50"
-                >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700">
-                    {user.fullName?.charAt(0).toUpperCase() || 'U'}
-                  </div>
-                  <span className="text-sm font-medium text-slate-700 hover:text-emerald-600">
-                    Xin chào, {user.fullName || 'bạn'}
-                  </span>
-                </Link>
-                
-                {/* Nút Đăng xuất */}
-                <button
-                  onClick={handleLogout}
-                  className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 transition-colors hover:bg-red-50 hover:text-red-500"
-                >
-                  Đăng xuất
-                </button>
-              </>
-            ) : (
-              <>
-                <Link to="/login" className="px-3 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900">
-                  Log in
-                </Link>
-                <Link to="/register" className="rounded-full bg-[#FF5645] px-5 py-2 text-sm font-bold text-white transition-all hover:bg-[#E04B3B] active:scale-95">
-                  Sign up
-                </Link>
-              </>
-            )}
+          {isLoggedIn ? (
+            <UserMenu user={user} onLogout={handleLogout} />
+          ) : (
+            <>
+              <Link to="/login" className="px-3 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900">
+                Log in
+              </Link>
+              <Link to="/register" className="rounded-full bg-[#FF5645] px-5 py-2 text-sm font-bold text-white transition-all hover:bg-[#E04B3B] active:scale-95">
+                Sign up
+              </Link>
+            </>
+          )}
           </div>
         </div>
       </header>
