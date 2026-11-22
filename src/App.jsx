@@ -18,6 +18,8 @@ import PlanTrip from './components/PlanTrip';
 import TripDetail from './components/TripDetail';
 import Community from './components/Community';
 import PublicProfile from './components/PublicProfile';
+import InvitePage from './components/InvitePage';
+import SharePage from './components/SharePage';
 
 // Phân quyền và Layout
 import ProtectedRoute from './routes/ProtectedRoute';
@@ -74,6 +76,12 @@ function App() {
 
         <Route path="/plan" element={<PlanTrip />} />
         <Route path="/trips/:tripId" element={<TripDetail />} />
+
+        {/* Mở lời mời tham gia chuyến đi từ link trong email */}
+        <Route path="/invite/:token" element={<InvitePage />} />
+
+        {/* Mở link chia sẻ chuyến đi (nút Share) */}
+        <Route path="/share/:token" element={<SharePage />} />
         <Route path="/community" element={<Community />} />
 
 

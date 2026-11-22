@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   Mail,
   Lock,
@@ -14,9 +14,13 @@ import {
   CheckCircle2,
   X,
 } from 'lucide-react';
+import { getSafeRedirect, withRedirect } from '../utils/redirect';
 
 const Register = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Giữ lại địa chỉ cần quay về (vd: trang lời mời) để đăng nhập xong vào đúng chỗ
+  const redirect = getSafeRedirect(location.search);
 
   // State quản lý form
   const [formData, setFormData] = useState({
@@ -67,7 +71,7 @@ const Register = () => {
 
       // Chuyển về trang login sau 2 giây
       setTimeout(() => {
-        navigate('/login');
+        navigate(withRedirect('/login', redirect));
       }, 2000);
     } catch (error) {
       if (error.response) {
@@ -278,7 +282,7 @@ const Register = () => {
             <p className="text-xs text-slate-500 sm:text-sm">
               Đã có tài khoản?{' '}
               <Link
-                to="/login"
+                to={withRedirect('/login', redirect)}
                 className="font-semibold text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
               >
                 Đăng nhập

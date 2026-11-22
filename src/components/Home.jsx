@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import UserMenu from './UserMenu';
 import UserSearchBox from './UserSearchBox';
+import PendingInvitations from './PendingInvitations';
+import ShareTripModal from './ShareTripModal';
 const FEATURES = [
   {
     icon: MapPin,
@@ -59,6 +61,7 @@ const Home = () => {
   const [openMenuId, setOpenMenuId] = useState(null);   // id trip đang mở menu 3 chấm
   const [deletingId, setDeletingId] = useState(null);   // id trip đang xóa
   const [dialog, setDialog] = useState(null);
+  const [shareTrip, setShareTrip] = useState(null);      // chuyến đi đang mở modal Share
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
@@ -89,6 +92,19 @@ const Home = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, [dialog, deletingId]);
   const isLoggedIn = Boolean(user);
+
+  // Chủ chuyến đi mới được chia sẻ / xóa; tripmate chỉ thấy nhãn quyền của mình
+  const isTripOwner = (trip) => {
+    if (!user || !trip?.user) return false;
+    if (user.id != null && trip.user.id != null) return user.id === trip.user.id;
+    return Boolean(user.email) && String(trip.user.email || '').toLowerCase() === user.email.toLowerCase();
+  };
+  const myRoleLabel = (trip) => {
+    const mine = (trip.members || []).find(
+      (m) => m.status === 'ACCEPTED' && String(m.user?.email || '').toLowerCase() === String(user?.email || '').toLowerCase()
+    );
+    return mine?.role === 'VIEWER' ? 'Chỉ xem' : 'Bạn đồng hành';
+  };
 
   // Hàm gọi API lấy danh sách chuyến đi của Tôi
   const fetchMyTrips = async () => {
@@ -224,7 +240,10 @@ const confirmDeleteTrip = async () => {
       {/* ===================== KHU VỰC CỦA NGƯỜI DÙNG (CÁC CHUYẾN ĐI) ===================== */}
       {isLoggedIn ? (
         <section className="mx-auto max-w-7xl px-4 pt-10 pb-6 sm:px-6 lg:px-8">
-          
+
+          {/* Lời mời tham gia chuyến đi (chỉ hiện khi có) */}
+          <PendingInvitations onJoined={fetchMyTrips} />
+
           {/* Banner Promo nhỏ */}
           <div className="mb-10 w-full rounded-2xl bg-gradient-to-r from-orange-50 to-rose-50 p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between border border-orange-100 relative overflow-hidden">
             <div className="relative z-10 max-w-xl">
@@ -289,51 +308,62 @@ const confirmDeleteTrip = async () => {
                       }}
                     />
                     
-                    {/* Lớp phủ & Nút hành động */}
-                    <div
-                      className={`absolute inset-0 bg-black/20 transition-opacity flex items-start justify-end p-3 gap-2 ${
-                        openMenuId === trip.id || deletingId === trip.id
-                          ? 'opacity-100'
-                          : 'opacity-0 group-hover:opacity-100'
-                      }`}
-                    >
-                      <button
-                        onClick={(e) => { e.stopPropagation(); }}
-                        className="h-8 w-8 rounded-full bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center hover:bg-white hover:text-[#FF5645] transition-colors shadow-sm"
-                        title="Share trip"
+                    {/* Lớp phủ & Nút hành động (chỉ chủ chuyến đi) */}
+                    {isTripOwner(trip) ? (
+                      <div
+                        className={`absolute inset-0 bg-black/20 transition-opacity flex items-start justify-end p-3 gap-2 ${
+                          openMenuId === trip.id || deletingId === trip.id
+                            ? 'opacity-100'
+                            : 'opacity-0 group-hover:opacity-100'
+                        }`}
                       >
-                        <Share2 className="h-4 w-4" />
-                      </button>
-
-                      <div className="relative">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setOpenMenuId(openMenuId === trip.id ? null : trip.id);
+                            setOpenMenuId(null);
+                            setShareTrip(trip);
                           }}
-                          className="h-8 w-8 rounded-full bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center hover:bg-white transition-colors shadow-sm"
-                          title="Options"
+                          className="h-8 w-8 rounded-full bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center hover:bg-white hover:text-[#FF5645] transition-colors shadow-sm"
+                          title="Chia sẻ chuyến đi"
+                          aria-label="Chia sẻ chuyến đi"
                         >
-                          <MoreHorizontal className="h-4 w-4" />
+                          <Share2 className="h-4 w-4" />
                         </button>
 
-                        {openMenuId === trip.id && (
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute right-0 top-10 z-20 w-40 overflow-hidden rounded-xl border border-slate-100 bg-white py-1 shadow-lg"
+                        <div className="relative">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuId(openMenuId === trip.id ? null : trip.id);
+                            }}
+                            className="h-8 w-8 rounded-full bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center hover:bg-white transition-colors shadow-sm"
+                            title="Options"
                           >
-                            <button
-                              onClick={(e) => handleDeleteTrip(e, trip)}
-                              disabled={deletingId === trip.id}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+
+                          {openMenuId === trip.id && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute right-0 top-10 z-20 w-40 overflow-hidden rounded-xl border border-slate-100 bg-white py-1 shadow-lg"
                             >
-                              <Trash2 className="h-4 w-4" />
-                              {deletingId === trip.id ? 'Đang xóa...' : 'Xóa chuyến đi'}
-                            </button>
-                          </div>
-                        )}
+                              <button
+                                onClick={(e) => handleDeleteTrip(e, trip)}
+                                disabled={deletingId === trip.id}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                {deletingId === trip.id ? 'Đang xóa...' : 'Xóa chuyến đi'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-slate-700 shadow-sm backdrop-blur">
+                        {myRoleLabel(trip)}
+                      </span>
+                    )}
                   </div>
 
                   {/* Nội dung card */}
@@ -482,6 +512,15 @@ const confirmDeleteTrip = async () => {
             )}
           </div>
         </div>
+      )}
+
+      {/* Modal chia sẻ chuyến đi */}
+      {shareTrip && (
+        <ShareTripModal
+          trip={shareTrip}
+          onClose={() => setShareTrip(null)}
+          onChanged={fetchMyTrips}
+        />
       )}
     </div>
   );

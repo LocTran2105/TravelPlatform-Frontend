@@ -17,8 +17,9 @@ const UserSearchBox = () => {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
-  // Từ khóa đã chuẩn hóa: bỏ khoảng trắng và dấu @ ở đầu
-  const keyword = query.trim().replace(/^@+/, '');
+  // Từ khóa đã chuẩn hóa: gộp khoảng trắng, bỏ khoảng trắng thừa và dấu @ ở đầu.
+  // Giữ nguyên chữ có dấu vì giờ tìm được cả theo họ tên.
+  const keyword = query.replace(/\s+/g, ' ').trim().replace(/^@+/, '').trim();
   const isLoggedIn = Boolean(localStorage.getItem('token'));
 
   // Gọi API sau khi người dùng ngừng gõ 300ms
@@ -84,6 +85,11 @@ const UserSearchBox = () => {
   };
 
   const handleKeyDown = (e) => {
+    // Đang gõ tiếng Việt (Telex/VNI): Enter chỉ để chốt chữ, không được chọn kết quả.
+    if (e.key === 'Enter' && e.nativeEvent.isComposing) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Escape') {
       setOpen(false);
       return;
@@ -125,10 +131,10 @@ const UserSearchBox = () => {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Search users by username..."
+          placeholder="Search users by name or username..."
           autoComplete="off"
-          maxLength={30}
-          aria-label="Tìm người dùng theo username"
+          maxLength={50}
+          aria-label="Tìm người dùng theo tên hoặc username"
           className="w-full bg-transparent text-sm text-slate-700 placeholder-slate-400 focus:outline-none"
         />
         {loading && (

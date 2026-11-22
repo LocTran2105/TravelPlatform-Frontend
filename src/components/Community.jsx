@@ -3,10 +3,13 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import {
   Compass, MapPin, Image as ImageIcon, Send,
-  Heart, MessageCircle, Share2, X, MoreHorizontal, Pencil, Trash2
+  Heart, MessageCircle, Share2, X, MoreHorizontal, Pencil, Trash2,
+  ChevronLeft, ChevronRight, Play
 } from 'lucide-react';
 import FollowButton from './FollowButton';
-import UserMenu from './UserMenu'; // chỉnh lại đường dẫn cho đúng
+import UserMenu from './UserMenu';
+import CommentSection from './CommentSection';
+import { formatCount, formatCountFull } from './formatCount';
 
 const API = 'http://localhost:8080/api';
 
@@ -23,6 +26,39 @@ const VISIBILITY_OPTIONS = [
 
 const getVisibility = (value) =>
   VISIBILITY_OPTIONS.find((o) => o.value === value) || VISIBILITY_OPTIONS[0];
+
+// Giới hạn khi đăng bài. Backend cũng chặn MAX_FILES; tổng dung lượng khớp
+// spring.servlet.multipart.max-request-size (đang là 50MB).
+// Số bài tải mỗi lần cuộn (backend giới hạn tối đa 30).
+const PAGE_SIZE = 10;
+
+// Hai kiểu bảng tin: xếp hạng theo điểm (backend: sort=ranked) hoặc mới nhất.
+const FEED_SORTS = [
+  { value: 'ranked', icon: '✨', label: 'Dành cho bạn' },
+  { value: 'latest', icon: '🕒', label: 'Mới nhất' },
+];
+
+const readStoredSort = () => {
+  try {
+    const saved = localStorage.getItem('feedSort');
+    return FEED_SORTS.some((s) => s.value === saved) ? saved : 'ranked';
+  } catch {
+    return 'ranked';
+  }
+};
+const MAX_FILES = 10;
+const MAX_TOTAL_MB = 50;
+const MAX_TOTAL_BYTES = MAX_TOTAL_MB * 1024 * 1024;
+
+// Danh sách ảnh/video của bài theo đúng thứ tự đăng. Bản backend cũ chưa có
+// "media" thì ghép từ imageUrls + videoUrls để vẫn hiển thị được.
+const getMedia = (post) => {
+  if (Array.isArray(post.media) && post.media.length > 0) return post.media;
+  return [
+    ...(post.imageUrls || []).map((url) => ({ url, type: 'IMAGE' })),
+    ...(post.videoUrls || []).map((url) => ({ url, type: 'VIDEO' })),
+  ];
+};
 
 const getToken = () => localStorage.getItem('token');
 
@@ -52,6 +88,7 @@ const formatDate = (value) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('vi-VN');
 };
+
 
 // ---------------------------------------------------------------------------
 // Menu 3 chấm (chỉ hiện với bài của chính mình)
@@ -118,6 +155,134 @@ const PostMenu = ({ onEdit, onDelete }) => {
 };
 
 // ---------------------------------------------------------------------------
+// Thư viện ảnh/video của một bài: vuốt hoặc bấm mũi tên để chuyển, nhấp đúp để thả tim
+// ---------------------------------------------------------------------------
+
+const SWIPE_THRESHOLD = 40; // px
+
+const MediaGallery = ({ media, showHeart, onDoubleClick }) => {
+  const [index, setIndex] = useState(0);
+  const touchStartX = useRef(null);
+
+  if (media.length === 0) return null;
+
+  const current = Math.min(index, media.length - 1);
+  const item = media[current];
+  const multiple = media.length > 1;
+
+  const go = (delta) => setIndex((current + delta + media.length) % media.length);
+  const stop = (e) => e.stopPropagation(); // bấm mũi tên liên tục không được tính là nhấp đúp thả tim
+
+  const handleKeyDown = (e) => {
+    if (!multiple) return;
+    if (e.key === 'ArrowLeft') go(-1);
+    if (e.key === 'ArrowRight') go(1);
+  };
+
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null || !multiple) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(dx) >= SWIPE_THRESHOLD) go(dx < 0 ? 1 : -1);
+  };
+
+  return (
+    <div
+      tabIndex={multiple ? 0 : undefined}
+      onKeyDown={handleKeyDown}
+      onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
+      onTouchEnd={handleTouchEnd}
+      onDoubleClick={onDoubleClick}
+      className={`relative mb-4 h-96 w-full select-none overflow-hidden rounded-2xl border border-slate-200 outline-none ${
+        item.type === 'VIDEO' ? 'bg-black' : 'cursor-pointer bg-slate-100'
+      }`}
+    >
+      {/* key={current}: đổi mục thì video cũ bị gỡ ra và dừng phát */}
+      {item.type === 'VIDEO' ? (
+        <video key={current} src={item.url} controls className="h-full w-full object-contain" />
+      ) : (
+        <img key={current} src={item.url} alt={`Ảnh ${current + 1}`} className="h-full w-full object-cover" />
+      )}
+
+      {multiple && (
+        <>
+          <span className="absolute right-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-xs font-bold text-white">
+            {current + 1}/{media.length}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => go(-1)}
+            onDoubleClick={stop}
+            aria-label="Ảnh trước"
+            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-1.5 text-slate-800 shadow transition-colors hover:bg-white"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => go(1)}
+            onDoubleClick={stop}
+            aria-label="Ảnh sau"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-1.5 text-slate-800 shadow transition-colors hover:bg-white"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center gap-1.5">
+            {media.map((m, i) => (
+              <span
+                key={`${m.url}-${i}`}
+                className={`h-1.5 rounded-full transition-all ${
+                  i === current ? 'w-4 bg-white' : 'w-1.5 bg-white/60'
+                }`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Tim to ở giữa (chỉ hiện khi nhấp đúp) */}
+      {showHeart && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/10">
+          <Heart className="animate-heart-pop h-24 w-24 fill-rose-500 text-rose-500 drop-shadow-2xl" />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Ô xem trước một ảnh/video đã chọn trong form đăng bài
+// ---------------------------------------------------------------------------
+
+const AttachmentTile = ({ attachment, onRemove }) => {
+  const isVideo = attachment.file.type.startsWith('video/');
+  return (
+    <div className="relative h-24 w-24 overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+      {isVideo ? (
+        <>
+          <video src={attachment.url} className="h-full w-full object-cover" muted />
+          <span className="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 text-[10px] font-bold text-white">
+            <Play className="h-2.5 w-2.5 fill-white" /> Video
+          </span>
+        </>
+      ) : (
+        <img src={attachment.url} alt="Xem trước" className="h-full w-full object-cover" />
+      )}
+      <button
+        type="button"
+        onClick={() => onRemove(attachment.id)}
+        aria-label={`Bỏ ${attachment.file.name}`}
+        className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white transition-colors hover:bg-red-500"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // Hộp thoại chỉnh sửa bài (nội dung + quyền hiển thị)
 // ---------------------------------------------------------------------------
 
@@ -127,7 +292,7 @@ const EditPostModal = ({ post, onClose, onSaved }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const hasMedia = (post.imageUrls?.length || 0) + (post.videoUrls?.length || 0) > 0;
+  const hasMedia = getMedia(post).length > 0;
   const canSave = !saving && (caption.trim().length > 0 || hasMedia);
 
   useEffect(() => {
@@ -241,15 +406,27 @@ const EditPostModal = ({ post, onClose, onSaved }) => {
 // ---------------------------------------------------------------------------
 
 const Community = () => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(readStoredUser);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingPost, setEditingPost] = useState(null);
 
+  // Phân trang: nextCursor = id bài cuối của trang đã tải, gửi lại làm "before"
+  const [feedSort, setFeedSort] = useState(readStoredSort);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
+  const feedVersion = useRef(0);   // tăng mỗi lần tải lại từ đầu -> bỏ kết quả "trang thêm" của lần cũ
+  const sentinelRef = useRef(null);
+  const loadMoreRef = useRef(() => {});
+
   // Form đăng bài
   const [caption, setCaption] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
+  // Nhiều ảnh/video: mỗi phần tử { id, file, url xem trước }
+  const [attachments, setAttachments] = useState([]);
+  const [fileError, setFileError] = useState('');
+  const attachmentsRef = useRef([]);
   const [visibility, setVisibility] = useState('PUBLIC');
   const [isPosting, setIsPosting] = useState(false);
   const fileInputRef = useRef(null);
@@ -264,35 +441,129 @@ const Community = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const locationBoxRef = useRef(null);
 
-  // --- Tải bảng tin ---------------------------------------------------------
+  // Lưu trạng thái xem bài viết nào đang mở bảng bình luận
+  const [openComments, setOpenComments] = useState({}); 
+
+  const toggleCommentSection = (postId) => {
+    setOpenComments(prev => ({ ...prev, [postId]: !prev[postId] }));
+  };
+
+  // --- Tải bảng tin (phân trang) ----------------------------------------------
   // PHẢI gửi token: không có token thì backend coi là khách → không biết
   // đâu là bài của mình, không tính được quan hệ (Bạn bè / Theo dõi...) và
   // không trả các bài FOLLOWERS / FRIENDS / PRIVATE.
-  const fetchPosts = async () => {
-    const load = (headers) => axios.get(`${API}/posts`, { headers });
+  // cursor: chuỗi nextCursor của trang trước, gửi lại NGUYÊN VĂN (không tự đọc / ghép).
+  const requestPage = async (sort, cursor) => {
+    const params = { size: PAGE_SIZE, sort, ...(cursor ? { cursor } : {}) };
+    const load = (headers) => axios.get(`${API}/posts`, { headers, params });
+    let response;
     try {
-      let response;
-      try {
-        response = await load(authHeaders());
-      } catch (err) {
-        // Token hết hạn → thử lại với tư cách khách thay vì để trang trống
-        if (getToken() && [401, 403].includes(err.response?.status)) {
-          response = await load({});
-        } else {
-          throw err;
-        }
+      response = await load(authHeaders());
+    } catch (err) {
+      // Token hết hạn → thử lại với tư cách khách thay vì để trang trống
+      if (getToken() && [401, 403].includes(err.response?.status)) {
+        response = await load({});
+      } else {
+        throw err;
       }
-      const data = response.data;
-      setPosts(Array.isArray(data) ? data : data?.content ?? []);
+    }
+    const data = response.data;
+    // Backend cũ (chưa phân trang) trả mảng: coi như một trang duy nhất.
+    if (Array.isArray(data)) return { items: data, hasMore: false, nextCursor: null };
+    return {
+      items: data?.items ?? data?.content ?? [],
+      hasMore: Boolean(data?.hasMore),
+      nextCursor: data?.nextCursor ?? null,
+    };
+  };
+
+  // Tải lại từ trang đầu (lần vào trang, sau khi đăng bài...)
+  const fetchPosts = async (sort = feedSort) => {
+    const version = ++feedVersion.current;
+    try {
+      const page = await requestPage(sort, null);
+      if (version !== feedVersion.current) return; // đã có lần tải mới hơn
+      setPosts(page.items);
+      setHasMore(page.hasMore);
+      setNextCursor(page.nextCursor);
+      setLoadMoreError(false);
     } catch (error) {
       console.error('Lỗi lấy bài viết:', error);
     } finally {
-      setLoading(false);
+      if (version === feedVersion.current) setLoading(false);
+    }
+  };
+
+  // Tải trang kế tiếp và NỐI vào cuối danh sách
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !nextCursor) return;
+    const version = feedVersion.current;
+    setLoadingMore(true);
+    setLoadMoreError(false);
+    try {
+      const page = await requestPage(feedSort, nextCursor);
+      if (version !== feedVersion.current) return; // feed vừa được tải lại, bỏ trang cũ
+      setPosts((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        return [...prev, ...page.items.filter((p) => !seen.has(p.id))]; // chống trùng bài
+      });
+      setHasMore(page.hasMore);
+      setNextCursor(page.nextCursor);
+    } catch (error) {
+      console.error('Lỗi tải thêm bài viết:', error);
+      if (version === feedVersion.current) setLoadMoreError(true);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
   useEffect(() => {
-    setUser(readStoredUser());
+    loadMoreRef.current = loadMore;
+  });
+
+  // Cuộn gần cuối danh sách thì tự tải trang kế (cách đáy 400px).
+  // Tạo lại observer sau mỗi trang để trường hợp trang ngắn, phần tử mốc vẫn
+  // đang hiện trên màn hình thì vẫn tiếp tục tải.
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!hasMore || loadMoreError || !node || typeof IntersectionObserver === 'undefined') {
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMoreRef.current();
+      },
+      { rootMargin: '400px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, loadMoreError, posts.length]);
+
+  // Đổi tab "Dành cho bạn" / "Mới nhất": tải lại từ đầu theo kiểu mới.
+  const changeSort = (next) => {
+    if (next === feedSort) return;
+    try {
+      localStorage.setItem('feedSort', next);
+    } catch {
+      /* không lưu được thì thôi, chỉ mất lựa chọn ở lần sau */
+    }
+    setFeedSort(next);
+    setPosts([]);
+    setHasMore(false);
+    setNextCursor(null);
+    setLoadMoreError(false);
+    setLoading(true);
+    fetchPosts(next);
+  };
+
+  // Đồng bộ lại feed từ đầu sau thao tác theo dõi / sửa bài. Nếu người dùng
+  // đã cuộn qua nhiều trang thì chỉ cập nhật tại chỗ (đã làm ở nơi gọi), tránh
+  // làm danh sách đang đọc bị co lại.
+  const resyncFeed = () => {
+    if (posts.length <= PAGE_SIZE) fetchPosts();
+  };
+
+  useEffect(() => {
     fetchPosts();
 
     // Lấy user thật từ server (localStorage có thể thiếu username)
@@ -371,30 +642,74 @@ const Community = () => {
   };
 
   // --- Chọn / bỏ file -------------------------------------------------------
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
-  };
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
 
-  const handleRemoveFile = () => {
-    setSelectedFile(null);
-    setPreviewUrl(null);
-    if (fileInputRef.current) fileInputRef.current.value = ''; // để chọn lại cùng file vẫn nhận
-  };
-
-  // Giải phóng URL xem trước khi đổi file / rời trang
+  // Rời trang thì giải phóng toàn bộ URL xem trước
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      attachmentsRef.current.forEach((a) => URL.revokeObjectURL(a.url));
     };
-  }, [previewUrl]);
+  }, []);
+
+  const handleFilesChange = (e) => {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = ''; // để chọn lại đúng file vừa bỏ vẫn nhận
+    if (picked.length === 0) return;
+
+    let message = '';
+    const next = [...attachments];
+    let totalBytes = next.reduce((sum, a) => sum + a.file.size, 0);
+
+    for (const file of picked) {
+      if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+        message = 'Chỉ hỗ trợ ảnh và video.';
+        continue;
+      }
+      const duplicated = next.some(
+        (a) => a.file.name === file.name && a.file.size === file.size && a.file.lastModified === file.lastModified
+      );
+      if (duplicated) continue;
+      if (next.length >= MAX_FILES) {
+        message = `Mỗi bài tối đa ${MAX_FILES} ảnh/video.`;
+        break;
+      }
+      if (totalBytes + file.size > MAX_TOTAL_BYTES) {
+        message = `Tổng dung lượng mỗi bài tối đa ${MAX_TOTAL_MB}MB.`;
+        continue;
+      }
+      totalBytes += file.size;
+      next.push({
+        id: `${file.name}-${file.size}-${file.lastModified}`,
+        file,
+        url: URL.createObjectURL(file),
+      });
+    }
+
+    setAttachments(next);
+    setFileError(message);
+  };
+
+  const handleRemoveFile = (id) => {
+    setAttachments((prev) => {
+      const target = prev.find((a) => a.id === id);
+      if (target) URL.revokeObjectURL(target.url);
+      return prev.filter((a) => a.id !== id);
+    });
+    setFileError('');
+  };
+
+  const clearAttachments = () => {
+    attachmentsRef.current.forEach((a) => URL.revokeObjectURL(a.url));
+    setAttachments([]);
+    setFileError('');
+  };
 
   // --- Đăng bài -------------------------------------------------------------
   const handleCreatePost = async (e) => {
     e.preventDefault();
-    if (!caption.trim() && !selectedFile) return;
+    if (!caption.trim() && attachments.length === 0) return;
 
     if (!getToken()) {
       alert('Vui lòng đăng nhập để đăng bài!');
@@ -408,7 +723,8 @@ const Community = () => {
     if (locationName) formData.append('locationName', locationName);
     if (latitude !== null) formData.append('latitude', latitude);
     if (longitude !== null) formData.append('longitude', longitude);
-    if (selectedFile) formData.append('files', selectedFile);
+    // Cùng một khóa 'files' cho từng file: backend nhận List<MultipartFile>, giữ đúng thứ tự chọn.
+    attachments.forEach((a) => formData.append('files', a.file));
 
     try {
       // Không tự đặt Content-Type: để trình duyệt thêm boundary cho multipart
@@ -419,7 +735,7 @@ const Community = () => {
       setLatitude(null);
       setLongitude(null);
       setVisibility('PUBLIC');
-      handleRemoveFile();
+      clearAttachments();
       fetchPosts();
     } catch (error) {
       alert('Lỗi khi đăng bài: ' + errorMessage(error));
@@ -428,11 +744,86 @@ const Community = () => {
     }
   };
 
+  // --- Thích / bỏ thích -------------------------------------------------------
+  const [heartAnimations, setHeartAnimations] = useState({});
+  const likeInFlight = useRef(new Set()); // chặn bấm liên tục khi request trước chưa xong
+
+  const patchPost = (postId, changes) =>
+    setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, ...changes } : p)));
+
+  const handleToggleLike = async (postId, currentIsLiked) => {
+    if (!getToken()) {
+      alert('Vui lòng đăng nhập để thao tác!');
+      return;
+    }
+    if (likeInFlight.current.has(postId)) return;
+
+    const snapshot = posts.find((p) => p.id === postId);
+    if (!snapshot) return;
+    const previous = { isLikedByMe: Boolean(snapshot.isLikedByMe), likeCount: snapshot.likeCount || 0 };
+
+    likeInFlight.current.add(postId);
+
+    // Cập nhật giao diện ngay cho mượt
+    patchPost(postId, {
+      isLikedByMe: !currentIsLiked,
+      likeCount: Math.max(0, previous.likeCount + (currentIsLiked ? -1 : 1)),
+    });
+
+    try {
+      const url = `${API}/social/likes/POST/${postId}`;
+      const res = currentIsLiked
+        ? await axios.delete(url, { headers: authHeaders() })
+        : await axios.post(url, {}, { headers: authHeaders() });
+
+      // Server trả số tim thật -> đồng bộ lại (có người khác vừa thích / bỏ thích cũng đúng)
+      if (typeof res.data?.likeCount === 'number') {
+        patchPost(postId, { likeCount: res.data.likeCount, isLikedByMe: Boolean(res.data.liked) });
+      }
+    } catch (error) {
+      console.error('Lỗi khi tương tác:', error);
+      patchPost(postId, previous); // hoàn lại đúng trạng thái trước đó
+      const status = error.response?.status;
+      if (status === 401) {
+        alert('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
+      } else if (status === 404) {
+        alert('Bài viết không còn khả dụng.');
+        fetchPosts();
+      }
+    } finally {
+      likeInFlight.current.delete(postId);
+    }
+  };
+
+  // Nhấp đúp vào ảnh: hiện tim to; chưa thích thì thích (đã thích rồi chỉ hiện hiệu ứng)
+  const handleDoubleClickLike = (postId, currentIsLiked) => {
+    if (!getToken()) {
+      alert('Vui lòng đăng nhập để thao tác!');
+      return;
+    }
+    setHeartAnimations((prev) => ({ ...prev, [postId]: true }));
+    setTimeout(() => {
+      setHeartAnimations((prev) => ({ ...prev, [postId]: false }));
+    }, 800);
+
+    if (!currentIsLiked) {
+      handleToggleLike(postId, false);
+    }
+  };
+
+  // Khu vực bình luận báo lại tổng số -> cập nhật số trên nút (kể cả khi
+  // người khác vừa bình luận / xóa).
+  const handleCommentCountChange = (postId, total) => {
+    setPosts((prev) =>
+      prev.map((p) => (p.id === postId && p.commentCount !== total ? { ...p, commentCount: total } : p))
+    );
+  };
+
   // --- Sửa / xóa bài --------------------------------------------------------
   const handlePostSaved = (updated) => {
     setPosts((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
     setEditingPost(null);
-    fetchPosts(); // quyền mới có thể làm bài ẩn/hiện với người khác → đồng bộ lại
+    resyncFeed(); // quyền mới có thể làm bài ẩn/hiện với người khác → đồng bộ lại
   };
 
   const handleDeletePost = async (post) => {
@@ -454,7 +845,7 @@ const Community = () => {
         p.authorUsername === authorUsername ? { ...p, followedByMe: isNowFollowing } : p
       )
     );
-    fetchPosts();
+    resyncFeed();
   };
 
   const isOwnPost = (post) =>
@@ -465,6 +856,20 @@ const Community = () => {
 
   return (
     <div className="min-h-screen w-full bg-slate-50 font-sans text-slate-900 antialiased">
+      <style>{`
+          @keyframes heart-pop {
+            0% { transform: scale(0); opacity: 0; }
+            15% { transform: scale(1.2); opacity: 0.9; }
+            30% { transform: scale(0.95); opacity: 1; }
+            45% { transform: scale(1); opacity: 1; }
+            80% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0; }
+          }
+          .animate-heart-pop {
+            animation: heart-pop 0.8s ease-in-out forwards;
+          }
+        `}</style>
+
       <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3.5 sm:px-6 lg:px-8">
           <div className="flex items-center gap-8">
@@ -506,28 +911,21 @@ const Community = () => {
                 />
               </div>
 
-              {/* Xem trước ảnh/video */}
-              {previewUrl && selectedFile && (
-                <div className="relative ml-14 mt-3 h-32 w-32 overflow-hidden rounded-xl border border-slate-200 shadow-sm">
-                  {selectedFile.type.startsWith('video/') ? (
-                    <video src={previewUrl} className="h-full w-full object-cover" muted />
-                  ) : (
-                    <img src={previewUrl} alt="Xem trước" className="h-full w-full object-cover" />
-                  )}
-                  <div className="absolute inset-x-0 bottom-0 truncate bg-black/60 p-1 text-center text-[10px] text-white backdrop-blur-sm">
-                    {selectedFile.name.length > 20
-                      ? selectedFile.name.substring(0, 15) + '...' + selectedFile.name.substring(selectedFile.name.lastIndexOf('.'))
-                      : selectedFile.name}
+              {/* Xem trước ảnh/video (nhiều file) */}
+              {attachments.length > 0 && (
+                <div className="ml-14 mt-3">
+                  <div className="flex flex-wrap gap-2">
+                    {attachments.map((a) => (
+                      <AttachmentTile key={a.id} attachment={a} onRemove={handleRemoveFile} />
+                    ))}
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleRemoveFile}
-                    aria-label="Bỏ file đã chọn"
-                    className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white transition-colors hover:bg-red-500"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {attachments.length}/{MAX_FILES} ảnh/video
+                  </p>
                 </div>
+              )}
+              {fileError && (
+                <p role="alert" className="ml-14 mt-2 text-xs font-semibold text-red-600">{fileError}</p>
               )}
 
               {/* Thanh công cụ (chỉ MỘT khối, trước đây bị lặp 2 lần) */}
@@ -543,9 +941,10 @@ const Community = () => {
                   <input
                     type="file"
                     ref={fileInputRef}
-                    onChange={handleFileChange}
+                    onChange={handleFilesChange}
                     className="hidden"
                     accept="image/*,video/*"
+                    multiple
                   />
 
                   {/* Tìm địa điểm */}
@@ -615,7 +1014,7 @@ const Community = () => {
 
                   <button
                     type="submit"
-                    disabled={isPosting || (!caption.trim() && !selectedFile)}
+                    disabled={isPosting || (!caption.trim() && attachments.length === 0)}
                     className="flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
                   >
                     {isPosting ? 'Đang đăng...' : <><Send className="h-4 w-4" /> Đăng bài</>}
@@ -625,6 +1024,26 @@ const Community = () => {
             </form>
           </div>
         )}
+
+        {/* ================= CHỌN KIỂU BẢNG TIN ================= */}
+        <div role="tablist" aria-label="Kiểu bảng tin" className="mb-5 flex gap-2">
+          {FEED_SORTS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={feedSort === tab.value}
+              onClick={() => changeSort(tab.value)}
+              className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${
+                feedSort === tab.value
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
 
         {/* ================= DÒNG THỜI GIAN ================= */}
         {loading ? (
@@ -713,33 +1132,87 @@ const Community = () => {
                     </div>
                   )}
 
-                  {post.imageUrls?.length > 0 && (
-                    <div className="mb-4 h-80 w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-                      <img src={post.imageUrls[0]} alt="Ảnh bài viết" className="h-full w-full object-cover" />
-                    </div>
-                  )}
-                  {post.videoUrls?.length > 0 && (
-                    <div className="mb-4 h-80 w-full overflow-hidden rounded-2xl bg-black">
-                      <video src={post.videoUrls[0]} controls className="h-full w-full object-contain" />
-                    </div>
-                  )}
+                  {/* --- MEDIA BÀI VIẾT (NHIỀU ẢNH/VIDEO) --- */}
+                  <MediaGallery
+                    media={getMedia(post)}
+                    showHeart={Boolean(heartAnimations[post.id])}
+                    onDoubleClick={() => handleDoubleClickLike(post.id, post.isLikedByMe)}
+                  />
 
-                  <div className="flex items-center gap-6 border-t border-slate-100 pt-2">
-                    <button type="button" className="group flex items-center gap-2 text-slate-500 transition-colors hover:text-rose-500">
-                      <Heart className="h-5 w-5 transition-transform group-active:scale-90" />
-                      <span className="text-sm font-semibold">Thích</span>
+                  {/* --- THANH TƯƠNG TÁC --- */}
+                  <div className="flex items-center gap-6 border-t border-slate-100 pt-3">
+
+                    {/* Nút tim: số lớn rút gọn (1N, 1,5Tr...), rê chuột xem số đầy đủ */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleLike(post.id, post.isLikedByMe)}
+                      aria-pressed={Boolean(post.isLikedByMe)}
+                      title={post.likeCount > 0 ? `${formatCountFull(post.likeCount)} lượt thích` : 'Thích'}
+                      className={`group flex items-center gap-2 transition-colors ${post.isLikedByMe ? 'text-rose-500' : 'text-slate-500 hover:text-rose-500'}`}
+                    >
+                      <Heart
+                        className={`h-6 w-6 transition-all duration-300 group-active:scale-75 ${post.isLikedByMe ? 'scale-110 fill-rose-500' : 'scale-100'}`}
+                      />
+                      <span className="text-sm font-semibold">
+                        {post.likeCount > 0 ? formatCount(post.likeCount) : 'Thích'}
+                      </span>
                     </button>
-                    <button type="button" className="flex items-center gap-2 text-slate-500 transition-colors hover:text-sky-500">
-                      <MessageCircle className="h-5 w-5" />
-                      <span className="text-sm font-semibold">Bình luận</span>
+
+                    {/* Nút bình luận: hiện số bình luận giống số tim */}
+                    <button
+                      type="button"
+                      onClick={() => toggleCommentSection(post.id)}
+                      aria-expanded={Boolean(openComments[post.id])}
+                      title={post.commentCount > 0 ? `${formatCountFull(post.commentCount)} bình luận` : 'Bình luận'}
+                      className={`flex items-center gap-2 transition-colors ${openComments[post.id] ? 'text-sky-500' : 'text-slate-500 hover:text-sky-500'}`}
+                    >
+                      <MessageCircle className="h-6 w-6" />
+                      <span className="text-sm font-semibold">
+                        {post.commentCount > 0 ? formatCount(post.commentCount) : 'Bình luận'}
+                      </span>
                     </button>
-                    <button type="button" aria-label="Chia sẻ" className="ml-auto flex items-center gap-2 text-slate-500 transition-colors hover:text-emerald-500">
-                      <Share2 className="h-5 w-5" />
+
+                    <button type="button" className="ml-auto flex items-center gap-2 text-slate-500 transition-colors hover:text-emerald-500">
+                      <Share2 className="h-6 w-6" />
                     </button>
                   </div>
+                {/* --- KHU VỰC BÌNH LUẬN ĐA CẤP (Chỉ hiện khi openComments[post.id] là true) --- */}
+                  {openComments[post.id] && (
+                    <CommentSection
+                      postId={post.id}
+                      currentUser={user}
+                      onCountChange={(total) => handleCommentCountChange(post.id, total)}
+                    />
+                  )}
                 </div>
               );
             })}
+
+            {/* Phần tử mốc: lọt vào màn hình thì tải trang kế */}
+            {hasMore && <div ref={sentinelRef} aria-hidden="true" className="h-px" />}
+
+            {loadingMore && (
+              <div className="flex justify-center py-4">
+                <div className="h-6 w-6 animate-spin rounded-full border-4 border-slate-200 border-t-[#FF5645]" />
+              </div>
+            )}
+
+            {hasMore && !loadingMore && loadMoreError && (
+              <div className="py-4 text-center">
+                <p className="mb-2 text-sm text-red-500">Không tải thêm được bài viết.</p>
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  className="rounded-full bg-slate-900 px-5 py-2 text-sm font-bold text-white hover:bg-slate-800"
+                >
+                  Thử lại
+                </button>
+              </div>
+            )}
+
+            {!hasMore && posts.length > PAGE_SIZE && (
+              <p className="py-4 text-center text-sm text-slate-400">Bạn đã xem hết bài viết.</p>
+            )}
           </div>
         )}
       </main>
