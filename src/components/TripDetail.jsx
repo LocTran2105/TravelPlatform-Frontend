@@ -5,17 +5,22 @@ import { createPortal } from 'react-dom';
 import { MapContainer, TileLayer, Marker, useMap, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import TripReviews from './TripReviews'; 
 import { 
   ArrowLeft, Calendar, MapPin, Plus, 
   Search, X, Users, Receipt, 
   Share2, MoreHorizontal, ChevronLeft, ChevronRight,
-  Wand2, Plane, Bed, Car, Train, Paperclip, CheckSquare, Compass,
+  Wand2, Plane, Bed, Car, Train, CheckSquare, Compass,
+  LayoutDashboard, CalendarDays, Wallet, Camera,
   Clock, MessageSquare, Star, Heart, Send, Image as ImageIcon, Play,
   Utensils, Wine, Landmark, Ticket, ShoppingBag, ShoppingCart, Fuel, Trash2, Pencil
 } from 'lucide-react';
 import AiAssistantChat from './AiAssistantChat';
+import ShareTripModal from './ShareTripModal';
+import TripMembersStack from './TripMembersStack';
+import TripMembersDialog from './TripMembersDialog';
 import TripPlannerBoard from './TripPlannerBoard';
+import TripCoverImage from './TripCoverImage';
+import CoverImagePicker from './CoverImagePicker';
 
 // ================= COMPONENT HỖ TRỢ BẢN ĐỒ =================
 // boundsKey / activeKey là chuỗi/số ổn định: bản đồ chỉ di chuyển khi tập điểm hoặc điểm được chọn THẬT SỰ đổi,
@@ -114,6 +119,19 @@ const formatDayDate = (d) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || ''));
   return m ? `${m[3]}/${m[2]}` : (d || '');
 };
+
+// '2026-12-01' -> 'Thứ ba, 01/12/2026'
+const WEEKDAYS = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
+const formatFullDate = (d) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || ''));
+  if (!m) return d || '';
+  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return `${WEEKDAYS[date.getDay()]}, ${m[3]}/${m[2]}/${m[1]}`;
+};
+
+// Các phần của trang, theo thứ tự từ trên xuống (cuộn liên tục kiểu Wanderlog)
+const SECTION_IDS = ['overview', 'itinerary', 'budget'];
+const SPY_OFFSET = 140; // phần nào chạm vạch cách mép trên khung cuộn 140px thì được coi là đang xem
 
 // 48 mốc giờ: 00:00, 00:30, ... 23:30
 const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) =>
@@ -481,17 +499,44 @@ const LegChip = ({ leg }) => {
   );
 };
 
+// Nút trong thanh bên: mục đang xem có nền đỏ nhạt + vạch đỏ bên trái
+const SidebarNavButton = ({ icon: Icon, label, active, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-current={active ? 'true' : undefined}
+    className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+      active ? 'bg-red-50 text-[#FF5645]' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+    }`}
+  >
+    {active && <span className="absolute bottom-2 left-0 top-2 w-1 rounded-full bg-[#FF5645]" />}
+    <Icon className="h-[18px] w-[18px] shrink-0" />
+    <span className="flex-1 text-left">{label}</span>
+  </button>
+);
+
+// Id người đang đăng nhập (Login lưu object user vào localStorage)
+const readMyId = () => {
+  try {
+    const id = JSON.parse(localStorage.getItem('user') || 'null')?.id;
+    return id === undefined || id === null ? null : String(id);
+  } catch {
+    return null;
+  }
+};
+
 const TripDetail = () => {
   const { tripId } = useParams();
   const navigate = useNavigate();
   
   const [trip, setTrip] = useState(null);
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeSection, setActiveSection] = useState('overview');
-  const [isItineraryExpanded, setIsItineraryExpanded] = useState(false);
+  const [isItineraryExpanded, setIsItineraryExpanded] = useState(true); // danh sách ngày trong thanh bên mặc định mở
   
   const [focusedDayId, setFocusedDayId] = useState(null);
   const [activeDestination, setActiveDestination] = useState(null);
@@ -529,6 +574,11 @@ const TripDetail = () => {
 
   const searchRef = useRef(null);
   const dayRefs = useRef({}); 
+  const scrollRef = useRef(null);      // khung cuộn chính
+  const sectionRefs = useRef({});      // { overview, itinerary, budget } -> phần tử DOM
+  const tripRef = useRef(null);        // bản trip mới nhất cho bộ theo dõi cuộn
+  const scrollLockRef = useRef(false); // true khi đang tự cuộn do bấm thanh bên: tạm ngưng theo dõi cuộn
+  const scrollLockTimer = useRef(0);
   const [activeTimePickerDestId, setActiveTimePickerDestId] = useState(null);
 
   // Panel thông tin bên bản đồ: đóng/mở độc lập với địa điểm đang được chọn
@@ -560,6 +610,14 @@ const TripDetail = () => {
   const [isSavingBudget, setIsSavingBudget] = useState(false);
   const [balanceDialog, setBalanceDialog] = useState(null); // null | { loading, data, error }
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+
+  // Thành viên + quyền của người đang xem
+  const [members, setMembers] = useState([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  const [membersReload, setMembersReload] = useState(0);
+  const [membersDialogOpen, setMembersDialogOpen] = useState(false);
+  const [shareModalView, setShareModalView] = useState(null); // null | 'share' | 'manage'
+  const [storedId] = useState(readMyId);
 
   // Mọi địa điểm trong lịch trình (để chọn khi thêm chi phí)
   const allDestinations = useMemo(() =>
@@ -617,6 +675,45 @@ const TripDetail = () => {
 
   useEffect(() => { fetchTripDetails(); }, [tripId]);
   useEffect(() => { fetchExpenses(); }, [tripId]);
+
+  // Danh sách thành viên (chủ chuyến đi đứng đầu). Người chưa là thành viên không xem được trang này.
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+    if (!token) return undefined;
+    axios
+      .get(`http://localhost:8080/api/trips/${tripId}/members`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        if (cancelled) return;
+        setMembers(Array.isArray(res.data) ? res.data : []);
+        setMembersLoaded(true);
+      })
+      .catch((err) => {
+        if (!cancelled) console.error('Lỗi tải thành viên:', err);
+      });
+    return () => { cancelled = true; };
+  }, [tripId, membersReload]);
+
+  // Id của mình: ưu tiên giá trị server trả về khi tải chi phí (luôn có), dự phòng là user trong localStorage
+  const myId = expenseData.currentUserId != null ? String(expenseData.currentUserId) : storedId;
+
+  // Quyền của mình: lấy từ danh sách thành viên (nguồn đúng nhất); trong lúc chờ thì suy từ chủ chuyến đi
+  const myRole = useMemo(() => {
+    if (myId === null) return null;
+    const mine = members.find((m) => String(m.userId) === myId);
+    if (mine) return mine.role === 'MEMBER' ? 'EDITOR' : mine.role;
+    if (!membersLoaded && trip?.user?.id !== undefined && trip?.user?.id !== null && String(trip.user.id) === myId) return 'OWNER';
+    return null;
+  }, [members, membersLoaded, myId, trip]);
+  const canEdit = myRole === 'OWNER' || myRole === 'EDITOR';
+  const isViewer = myRole === 'VIEWER';
+
+  // Trong lúc chưa tải xong danh sách, vẫn hiện avatar chủ chuyến đi
+  const stackMembers = useMemo(() => {
+    if (members.length > 0) return members;
+    const u = trip?.user;
+    return u ? [{ userId: u.id ?? 'owner', fullName: u.fullName, username: u.username, avatar: u.avatar, role: 'OWNER', owner: true }] : [];
+  }, [members, trip]);
 
   // Kéo thanh chia ở mép trái bản đồ: kéo sang trái để mở rộng map, sang phải để thu nhỏ.
   useEffect(() => {
@@ -1008,9 +1105,29 @@ const TripDetail = () => {
     } catch (e) { alert("Bạn cần đăng nhập để thả tim."); }
   };
 
+  // Cuộn khung chính tới một phần tử. Trong lúc cuộn mượt, tạm tắt bộ theo dõi để thanh bên không nhấp nháy qua các mục ở giữa.
+  const scrollToElement = (el, offset = 0) => {
+    const container = scrollRef.current;
+    if (!container || !el) return;
+    scrollLockRef.current = true;
+    clearTimeout(scrollLockTimer.current);
+    scrollLockTimer.current = setTimeout(() => { scrollLockRef.current = false; }, 900); // phòng khi không có sự kiện cuộn nào
+    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - offset;
+    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  };
+
+  const handleScrollToSection = (id) => {
+    setActiveSection(id);
+    setActiveDestination(null);
+    setFocusedDayId(id === 'itinerary' ? (trip?.tripDays?.[0]?.id ?? null) : null);
+    scrollToElement(sectionRefs.current[id]);
+  };
+
   const handleScrollToDay = (dayId) => {
-    setActiveSection('itinerary'); setFocusedDayId(dayId); setActiveDestination(null);
-    if (dayRefs.current[dayId]) dayRefs.current[dayId].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setActiveSection('itinerary');
+    setFocusedDayId(dayId);
+    setActiveDestination(null);
+    scrollToElement(dayRefs.current[dayId], 16);
   };
 
   // Những destination cũ chỉ có placeName (chưa lưu latitude/longitude) vẫn được geocode qua Photon.
@@ -1160,6 +1277,68 @@ const TripDetail = () => {
     return () => controller.abort();
   }, [routeKey, focusedDayId]);
 
+  useEffect(() => { tripRef.current = trip; });
+
+  // Cuộn liên tục kiểu Wanderlog: cuộn tới đâu thì mục (Tổng quan / Lịch trình / Ngân sách) và NGÀY tương ứng được chọn tới đó.
+  // Ngày đang xem cũng là ngày bản đồ đang hiển thị.
+  const hasTrip = Boolean(trip);
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return undefined;
+    let frame = 0;
+
+    const sync = () => {
+      frame = 0;
+      const line = container.getBoundingClientRect().top + SPY_OFFSET;
+      const scrollable = container.scrollHeight > container.clientHeight + 8;
+      const atBottom = scrollable && container.scrollTop + container.clientHeight >= container.scrollHeight - 4;
+
+      let current = SECTION_IDS[0];
+      for (const id of SECTION_IDS) {
+        const el = sectionRefs.current[id];
+        if (el && el.getBoundingClientRect().top <= line) current = id;
+      }
+      if (atBottom) current = SECTION_IDS[SECTION_IDS.length - 1]; // phần cuối ngắn không chạm tới vạch thì vẫn được chọn khi cuộn hết
+
+      let dayId = null;
+      if (current === 'itinerary') {
+        const days = tripRef.current?.tripDays || [];
+        dayId = days[0]?.id ?? null;
+        for (const d of days) {
+          const el = dayRefs.current[d.id];
+          if (el && el.getBoundingClientRect().top <= line) dayId = d.id;
+        }
+      }
+
+      setActiveSection(current);
+      setFocusedDayId(dayId);
+      // Đang chọn một địa điểm của ngày khác thì bỏ chọn, để bản đồ chuyển sang ngày mới
+      setActiveDestination((prev) => {
+        if (!prev || dayId === null) return prev;
+        const owner = (tripRef.current?.tripDays || []).find((d) => (d.destinations || []).some((x) => x.id === prev.id));
+        return owner && owner.id !== dayId ? null : prev;
+      });
+    };
+
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(sync); };
+    const onScroll = () => {
+      if (scrollLockRef.current) {
+        // đang tự cuộn: đợi cuộn xong rồi mới đồng bộ một lần
+        clearTimeout(scrollLockTimer.current);
+        scrollLockTimer.current = setTimeout(() => { scrollLockRef.current = false; schedule(); }, 140);
+        return;
+      }
+      schedule();
+    };
+
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(frame);
+      clearTimeout(scrollLockTimer.current);
+    };
+  }, [loading, hasTrip]);
+
   if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500">Đang tải hành trình...</div>;
   if (!trip) return null;
 
@@ -1172,51 +1351,136 @@ const TripDetail = () => {
   return (
     <div className="h-screen w-full flex bg-slate-50 font-sans overflow-hidden">
       
-      {/* 1. SIDEBAR */}
-      <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col relative z-20 overflow-hidden`}>
-        <div className="p-4 flex items-center gap-3 border-b border-slate-100">
-          <Link to="/home" className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 text-slate-600"><ArrowLeft className="w-4 h-4" /></Link>
-          <span className="font-bold text-slate-800 truncate flex-1">{trip.destination}</span>
-        </div>
-        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-          <button onClick={() => { setActiveSection('overview'); setFocusedDayId(null); setActiveDestination(null); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'overview' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}><ChevronDownIcon isOpen={activeSection === 'overview'} /> Overview</button>
-          <div className="pt-2">
-            <button onClick={() => { setActiveSection('itinerary'); setIsItineraryExpanded(!isItineraryExpanded); setFocusedDayId(null); setActiveDestination(null); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'itinerary' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}><ChevronDownIcon isOpen={isItineraryExpanded} /> Itinerary</button>
-            {isItineraryExpanded && (
-              <div className="pl-9 space-y-1 mt-1">
-                {trip.tripDays?.map((day) => (
-                  <span key={day.id} onClick={() => handleScrollToDay(day.id)} className={`block px-3 py-1.5 text-sm cursor-pointer rounded-md transition-colors ${focusedDayId === day.id ? 'font-bold text-[#FF5645] bg-red-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}>Day {day.dayNumber}</span>
-                ))}
+      {/* 1. THANH BÊN */}
+      <aside className={`${isSidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out relative z-20 overflow-hidden`}>
+        <div className="flex h-full w-64 flex-col">
+          <div className="border-b border-slate-100 px-4 pb-4 pt-4">
+            <Link to="/home" className="mb-3 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition-colors hover:text-slate-900">
+              <ArrowLeft className="h-3.5 w-3.5" /> Trang chủ
+            </Link>
+            <h2 className="line-clamp-2 text-base font-extrabold leading-snug text-slate-900">{trip.title}</h2>
+            <p className="mt-1 flex items-center gap-1 text-xs font-medium text-slate-500">
+              <MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{trip.destination}</span>
+            </p>
+          </div>
+
+          <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3" aria-label="Các phần của chuyến đi">
+            <SidebarNavButton icon={LayoutDashboard} label="Tổng quan" active={activeSection === 'overview'} onClick={() => handleScrollToSection('overview')} />
+
+            <div>
+              <div className="relative">
+                <SidebarNavButton icon={CalendarDays} label="Lịch trình" active={activeSection === 'itinerary'} onClick={() => handleScrollToSection('itinerary')} />
+                <button
+                  type="button"
+                  onClick={() => setIsItineraryExpanded((v) => !v)}
+                  aria-label={isItineraryExpanded ? 'Thu gọn danh sách ngày' : 'Mở danh sách ngày'}
+                  aria-expanded={isItineraryExpanded}
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <ChevronDownIcon isOpen={isItineraryExpanded} />
+                </button>
               </div>
-            )}
-          </div>
-          <div className="pt-2">
-            <button onClick={() => setActiveSection('budget')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg font-bold text-sm transition-colors ${activeSection === 'budget' ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'}`}><ChevronDownIcon isOpen={activeSection === 'budget'} /> Budget</button>
+              {isItineraryExpanded && (
+                <ol className="ml-[21px] mt-1 space-y-0.5 border-l border-slate-200 pl-2.5">
+                  {(trip.tripDays || []).length === 0 && <li className="px-3 py-1.5 text-xs text-slate-400">Chưa có ngày nào</li>}
+                  {(trip.tripDays || []).map((day) => {
+                    const isCurrent = activeSection === 'itinerary' && focusedDayId === day.id;
+                    const count = (day.destinations || []).length;
+                    return (
+                      <li key={day.id}>
+                        <button
+                          type="button"
+                          onClick={() => handleScrollToDay(day.id)}
+                          aria-current={isCurrent ? 'true' : undefined}
+                          className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-left text-[13px] transition-colors ${
+                            isCurrent ? 'bg-red-50 font-bold text-[#FF5645]' : 'font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                          }`}
+                        >
+                          <span className="truncate">
+                            Ngày {day.dayNumber}
+                            {formatDayDate(day.dayDate) && <span className={`ml-1.5 text-[11px] font-medium ${isCurrent ? 'text-[#FF5645]/70' : 'text-slate-400'}`}>{formatDayDate(day.dayDate)}</span>}
+                          </span>
+                          {count > 0 && (
+                            <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${isCurrent ? 'bg-white text-[#FF5645]' : 'bg-slate-100 text-slate-500'}`}>{count}</span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
+
+            <SidebarNavButton icon={Wallet} label="Ngân sách" active={activeSection === 'budget'} onClick={() => handleScrollToSection('budget')} />
+          </nav>
+
+          {/* Tóm tắt nhanh */}
+          <div className="border-t border-slate-100 p-3">
+            <div className="rounded-2xl bg-slate-50 p-3">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Tóm tắt</p>
+              <p className="mt-1.5 text-xs font-semibold text-slate-600">
+                {(trip.tripDays || []).length} ngày · {allDestinations.length} địa điểm
+              </p>
+              <div className="mt-2 flex items-baseline justify-between gap-2">
+                <span className="text-xs font-medium text-slate-500">Đã chi</span>
+                <span className="text-sm font-extrabold text-slate-900">{formatVND(expenseStats.spent)}</span>
+              </div>
+              {expenseStats.budget > 0 && (
+                <>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className={`h-full rounded-full ${expenseStats.remaining < 0 ? 'bg-rose-500' : expenseStats.percent >= 80 ? 'bg-amber-400' : 'bg-indigo-500'}`}
+                      style={{ width: `${Math.min(100, expenseStats.percent)}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] font-medium text-slate-400">trên ngân sách {formatVND(expenseStats.budget)}</p>
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </aside>
 
       {/* 2. MAIN CONTENT */}
-      <div className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-y-auto scroll-smooth">
+      <div ref={scrollRef} className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-y-auto scroll-smooth">
         
-        {/* --- TAB 1: OVERVIEW --- */}
-        {activeSection === 'overview' && (
-          <div className="pb-20">
+        {/* --- PHẦN 1: TỔNG QUAN --- */}
+        <section id="section-overview" ref={(el) => { sectionRefs.current.overview = el; }} className="shrink-0 pb-12">
+          <div>
             <div className="h-[300px] w-full relative bg-slate-800">
-              <img src={`https://source.unsplash.com/1200x600/?${encodeURIComponent(trip.destination || 'vietnam')}`} alt="Cover" className="w-full h-full object-cover opacity-80" />
+              <TripCoverImage trip={trip} width={1600} height={600} eager labelClassName="text-2xl" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/30 to-transparent" />
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => setCoverPickerOpen(true)}
+                  className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full bg-white/90 px-3.5 py-2 text-sm font-bold text-slate-700 shadow-md backdrop-blur transition-colors hover:bg-white"
+                >
+                  <Camera className="w-4 h-4" /> Đổi ảnh bìa
+                </button>
+              )}
             </div>
             <div className="relative -mt-16 mx-auto max-w-4xl px-4 sm:px-8">
-              <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-100 flex flex-col sm:flex-row sm:items-end justify-between">
+              <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-100 flex flex-col gap-5">
                 <div>
                   <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">{trip.title}</h1>
-                  <div className="flex items-center text-sm font-semibold text-slate-500 gap-2"><Calendar className="w-4 h-4 text-slate-400"/> {trip.startDate} — {trip.endDate || 'No end date'}</div>
+                  <div className="flex items-center text-sm font-semibold text-slate-500 gap-2"><Calendar className="w-4 h-4 text-slate-400"/> {formatFullDate(trip.startDate)} — {trip.endDate ? formatFullDate(trip.endDate) : 'Chưa có ngày kết thúc'}</div>
                 </div>
-                {/* Đã bọc thép hàm lấy chữ cái đầu */}
-                <div className="flex items-center gap-2 mt-4 sm:mt-0">
-                  <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 border border-slate-200">
-                    {getInitial(trip.user?.fullName)}
-                  </div>
-                  <button className="h-10 w-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-500 hover:bg-slate-100 border border-slate-200 border-dashed"><Users className="w-4 h-4" /></button>
+                {/* Thành viên: tối đa 3 avatar + "+N". Chủ chuyến đi / người chỉnh sửa bấm vào để xem thành viên và lịch sử thao tác */}
+                <div className="flex flex-wrap items-center gap-3">
+                  {isViewer && (
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">Chỉ xem</span>
+                  )}
+                  <TripMembersStack members={stackMembers} canOpen={canEdit} onOpen={() => setMembersDialogOpen(true)} />
+                  {myRole === 'OWNER' && (
+                    <button
+                      type="button"
+                      onClick={() => setShareModalView('share')}
+                      className="flex items-center gap-1.5 rounded-full bg-[#FF5645] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#E04B3B]"
+                    >
+                      <Share2 className="w-4 h-4" /> Chia sẻ
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1227,7 +1491,7 @@ const TripDetail = () => {
               <div className="mb-10">
                 <div className="flex items-center justify-between mb-3 group cursor-pointer" onClick={() => setIsNoteExpanded(!isNoteExpanded)}>
                   <h3 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
-                    <ChevronDownIcon isOpen={isNoteExpanded} /> Notes
+                    <ChevronDownIcon isOpen={isNoteExpanded} /> Ghi chú
                   </h3>
                   <button className="p-1 rounded hover:bg-slate-100 opacity-0 group-hover:opacity-100 transition-opacity">
                     <MoreHorizontal className="w-5 h-5 text-slate-400" />
@@ -1239,7 +1503,7 @@ const TripDetail = () => {
                     <textarea 
                       value={tripNote}
                       onChange={(e) => setTripNote(e.target.value)}
-                      placeholder="Write or paste anything here: how to get around, tips and tricks"
+                      placeholder="Viết hoặc dán bất cứ điều gì ở đây: cách di chuyển, mẹo hay, lưu ý..."
                       className="w-full bg-slate-100/50 hover:bg-slate-100 rounded-xl p-4 text-sm text-slate-700 outline-none border border-transparent focus:border-slate-300 focus:bg-white transition-all resize-none min-h-[100px]"
                     />
                   </div>
@@ -1321,46 +1585,21 @@ const TripDetail = () => {
                 </button>
                 <hr className="flex-1 border-slate-200" />
               </div>
-
-              {/* === PHẦN 3: WIDGET ĐẶT PHÒNG & ĐÁNH GIÁ CHUYẾN ĐI === */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mt-4 mb-10">
-                <div className="sm:col-span-2 bg-slate-100/50 rounded-2xl p-5 border border-slate-200/60">
-                  <h3 className="font-bold text-slate-900 mb-4">Reservations and attachments</h3>
-                  <div className="flex gap-4 overflow-x-auto pb-2 text-slate-500">
-                    <ReservationIcon icon={<Plane/>} label="Flight" />
-                    <ReservationIcon icon={<Bed/>} label="Lodging" />
-                    <ReservationIcon icon={<Car/>} label="Rental car" />
-                    <ReservationIcon icon={<Train/>} label="Train" />
-                    <ReservationIcon icon={<Paperclip/>} label="Attachment" />
-                    <ReservationIcon icon={<MoreHorizontal/>} label="Other" />
-                  </div>
-                </div>
-                <div className="bg-slate-100/50 rounded-2xl p-5 border border-slate-200/60 flex flex-col justify-between">
-                  <h3 className="font-bold text-slate-900">Budgeting</h3>
-                  <div>
-                    <p className={`text-2xl font-bold ${expenseStats.spent > 0 ? 'text-slate-900' : 'text-slate-400'}`}>{formatVND(expenseStats.spent)}</p>
-                    {expenseStats.budget > 0 && <p className="text-xs font-semibold text-slate-500">trên ngân sách {formatVND(expenseStats.budget)}</p>}
-                    <button onClick={() => setActiveSection('budget')} className="text-sm font-bold text-slate-600 hover:text-slate-900 mt-1">View details</button>
-                  </div>
-                </div>
-              </div>
-
-              {trip.id && <TripReviews tripId={trip.id} />}
             </div>
           </div>
-        )}
+        </section>
 
-{/* --- TAB 2: ITINERARY --- */}
-        {activeSection === 'itinerary' && (
-          <div className="w-full h-[calc(100vh-100px)] bg-slate-50 overflow-y-auto">
+        {/* --- PHẦN 2: LỊCH TRÌNH --- */}
+        <section id="section-itinerary" ref={(el) => { sectionRefs.current.itinerary = el; }} className="shrink-0 w-full bg-slate-50 border-t border-slate-200/70">
+          <div className="w-full">
             {/* Lịch trình chiếm toàn bộ chiều rộng; AI được mở từ bong bóng nổi ở góc màn hình. */}
             <div className="w-full p-6 sm:p-8 relative">
               <div className="max-w-3xl mx-auto w-full">
-                <h2 className="text-3xl font-extrabold text-slate-900 mb-8">Itinerary</h2>
+                <h2 className="text-3xl font-extrabold text-slate-900 mb-8">Lịch trình</h2>
                 <div className="space-y-8">
                   {trip.tripDays?.map((day) => (
-                    <div key={day.id} ref={el => dayRefs.current[day.id] = el} className={`bg-white border rounded-3xl p-6 shadow-sm transition-all ${focusedDayId === day.id ? 'border-[#FF5645] ring-4 ring-[#FF5645]/10' : 'border-slate-200'}`}>
-                      <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-3 mb-6"><span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Day {day.dayNumber}</span><span className="text-slate-500">{day.dayDate}</span></h3>
+                    <div key={day.id} data-day-id={day.id} ref={el => dayRefs.current[day.id] = el} className={`bg-white border rounded-3xl p-6 shadow-sm transition-all ${focusedDayId === day.id ? 'border-[#FF5645] ring-4 ring-[#FF5645]/10' : 'border-slate-200'}`}>
+                      <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-3 mb-6"><span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Ngày {day.dayNumber}</span><span className="text-slate-500">{formatFullDate(day.dayDate)}</span></h3>
                       
                       <div className="space-y-4 mb-4">
                         {(!day.destinations || day.destinations.length === 0) ? (
@@ -1411,16 +1650,17 @@ const TripDetail = () => {
                                     <input 
                                       type="text" 
                                       defaultValue={dest.note || ''} 
-                                      onBlur={(e) => handleUpdateDestProperty(day.id, dest.id, 'note', e.target.value)}
+                                      readOnly={!canEdit}
+                                      onBlur={(e) => { if (canEdit) handleUpdateDestProperty(day.id, dest.id, 'note', e.target.value); }}
                                       onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                                      placeholder="Thêm ghi chú..." 
+                                      placeholder={canEdit ? 'Thêm ghi chú...' : 'Chưa có ghi chú'} 
                                       className="w-full bg-transparent text-sm text-slate-700 outline-none mb-3 placeholder:text-slate-400 border-b border-transparent focus:border-slate-300 pb-1"
                                     />
                                   ) : (
                                     dest.note && <p className="text-[13px] text-slate-600 mb-2 line-clamp-2">{dest.note}</p>
                                   )}
 
-                                  {isActive && (
+                                  {isActive && canEdit && (
                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 pt-2 border-t border-slate-200 relative">
                                       
                                       <button 
@@ -1460,7 +1700,7 @@ const TripDetail = () => {
                                             >
                                               <div className="flex items-center gap-2">
                                                 <div className={`flex-1 bg-slate-50 rounded-lg p-2 border transition-colors ${timeDraft.focus === 'start' ? 'border-indigo-400' : 'border-slate-100'}`}>
-                                                  <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Start time</span>
+                                                  <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Giờ bắt đầu</span>
                                                   <input
                                                     type="time"
                                                     value={timeDraft.start}
@@ -1471,7 +1711,7 @@ const TripDetail = () => {
                                                 </div>
                                                 <span className="text-slate-300 font-medium">—</span>
                                                 <div className={`flex-1 bg-slate-50 rounded-lg p-2 border transition-colors ${timeDraft.focus === 'end' ? 'border-indigo-400' : 'border-slate-100'}`}>
-                                                  <span className="text-[10px] font-bold text-slate-400 block mb-0.5">End time</span>
+                                                  <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Giờ kết thúc</span>
                                                   <input
                                                     type="time"
                                                     value={timeDraft.end}
@@ -1551,7 +1791,7 @@ const TripDetail = () => {
                                     </div>
                                   )}
 
-                                  {!isActive && (dest.timeRange || (expenseStats.byDest[dest.id] || 0) > 0) && (
+                                  {(!isActive || !canEdit) && (dest.timeRange || (expenseStats.byDest[dest.id] || 0) > 0) && (
                                     <div className="flex flex-wrap gap-2 mt-2">
                                       {dest.timeRange && dest.timeRange.trim() !== '' && <span className="bg-indigo-50 px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700">{dest.timeRange}</span>}
                                       {(expenseStats.byDest[dest.id] || 0) > 0 && <span className="bg-indigo-50 px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700">{formatVND(expenseStats.byDest[dest.id])}</span>}
@@ -1587,8 +1827,8 @@ const TripDetail = () => {
                           )}
                         </div>
                       ) : (
-                        <div className="pl-12 mt-2">
-                          <button onClick={() => setAddingDayId(day.id)} className="w-full py-3 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 text-sm font-bold hover:border-[#FF5645] hover:text-[#FF5645] hover:bg-orange-50/50 transition-colors flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> Add place to Day {day.dayNumber}</button>
+                        canEdit && <div className="pl-12 mt-2">
+                          <button onClick={() => setAddingDayId(day.id)} className="w-full py-3 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 text-sm font-bold hover:border-[#FF5645] hover:text-[#FF5645] hover:bg-orange-50/50 transition-colors flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> Thêm địa điểm vào Ngày {day.dayNumber}</button>
                         </div>
                       )}
                     </div>
@@ -1597,18 +1837,21 @@ const TripDetail = () => {
               </div>
             </div>
           </div>
-        )}
-        {/* --- TAB 3: BUDGET --- */}
-        {activeSection === 'budget' && (
+        </section>
+
+        {/* --- PHẦN 3: NGÂN SÁCH --- */}
+        <section id="section-budget" ref={(el) => { sectionRefs.current.budget = el; }} className="shrink-0 min-h-[80vh] border-t border-slate-200/70">
           <div className="p-6 sm:p-10 max-w-3xl mx-auto">
             <div className="flex items-center justify-between gap-4 mb-6">
               <h2 className="text-4xl font-extrabold text-slate-900">Ngân sách</h2>
-              <button
-                onClick={() => openExpenseDialog()}
-                className="flex items-center gap-2 px-5 py-3 bg-[#FF5645] text-white font-bold text-sm rounded-full hover:bg-[#E04B3B] transition-colors shadow-sm"
-              >
-                <Plus className="w-4 h-4" /> Thêm chi phí
-              </button>
+              {canEdit && (
+                <button
+                  onClick={() => openExpenseDialog()}
+                  className="flex items-center gap-2 px-5 py-3 bg-[#FF5645] text-white font-bold text-sm rounded-full hover:bg-[#E04B3B] transition-colors shadow-sm"
+                >
+                  <Plus className="w-4 h-4" /> Thêm chi phí
+                </button>
+              )}
             </div>
 
             {/* Thẻ tổng quan */}
@@ -1635,12 +1878,14 @@ const TripDetail = () => {
                 </p>
               )}
               <div className="flex flex-wrap gap-3 mt-5">
-                <button
-                  onClick={() => { setBudgetInput(expenseStats.budget > 0 ? String(expenseStats.budget) : ''); setBudgetDialogOpen(true); }}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-slate-200/70 hover:bg-slate-200 text-slate-800 font-bold text-sm rounded-full transition-colors"
-                >
-                  <Pencil className="w-4 h-4" /> {expenseStats.budget > 0 ? 'Sửa ngân sách' : 'Đặt ngân sách'}
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => { setBudgetInput(expenseStats.budget > 0 ? String(expenseStats.budget) : ''); setBudgetDialogOpen(true); }}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-slate-200/70 hover:bg-slate-200 text-slate-800 font-bold text-sm rounded-full transition-colors"
+                  >
+                    <Pencil className="w-4 h-4" /> {expenseStats.budget > 0 ? 'Sửa ngân sách' : 'Đặt ngân sách'}
+                  </button>
+                )}
                 <button
                   onClick={openBalanceDialog}
                   className="flex items-center gap-2 px-4 py-2.5 bg-slate-200/70 hover:bg-slate-200 text-slate-800 font-bold text-sm rounded-full transition-colors"
@@ -1699,28 +1944,27 @@ const TripDetail = () => {
                       </p>
                     </div>
                     <p className="font-bold text-slate-900 shrink-0">{formatVND(exp.amount)}</p>
-                    <button
-                      onClick={() => deleteExpense(exp)}
-                      aria-label="Xóa khoản chi"
-                      className="shrink-0 h-8 w-8 rounded-full text-slate-300 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => deleteExpense(exp)}
+                        aria-label="Xóa khoản chi"
+                        className="shrink-0 h-8 w-8 rounded-full text-slate-300 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 );
               })
             )}
           </div>
-        )}
+        </section>
       </div>
 
       {/* ================= CỘT 3. BẢN ĐỒ VÀ PANEL CHI TIẾT ĐỊA ĐIỂM ================= */}
       <div
-          className={`hidden md:block relative z-0 h-full min-h-0 overflow-hidden border-l border-slate-200 flex-shrink-0 ${isResizingMap ? '' : 'transition-[width] duration-200'}`}        style={activeSection === 'itinerary'
-          ? { width: `${mapPanelWidth}px`, flex: `0 0 ${mapPanelWidth}px` }
-          : { width: '45%', flex: '0 0 45%' }}
+          className={`hidden md:block relative z-0 h-full min-h-0 overflow-hidden border-l border-slate-200 flex-shrink-0 ${isResizingMap ? '' : 'transition-[width] duration-200'}`}        style={{ width: `${mapPanelWidth}px`, flex: `0 0 ${mapPanelWidth}px` }}
       >
-        {activeSection === 'itinerary' && (
           <div
             role="separator"
             aria-orientation="vertical"
@@ -1736,7 +1980,6 @@ const TripDetail = () => {
           >
             <span className="h-20 w-1 rounded-full bg-slate-300 group-hover:bg-[#FF5645] group-active:bg-[#FF5645] transition-colors shadow-sm" />
           </div>
-        )}
         {/* PANEL TRƯỢT (NỔI TRÊN BẢN ĐỒ) */}
         <div className={`absolute top-4 left-4 bottom-4 w-[400px] bg-white rounded-3xl shadow-2xl z-[1000] border border-slate-100 flex flex-col overflow-hidden transition-transform duration-500 ease-in-out ${activeDestination && isPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[120%] opacity-0 pointer-events-none'}`}>
           {activeDestination && (
@@ -1745,7 +1988,7 @@ const TripDetail = () => {
               <div className="relative h-56 bg-slate-800 flex-shrink-0">
                                     <img 
                       src={coverImage || `https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=800&auto=format&fit=crop`} 
-                      alt="Cover" 
+                      alt="Ảnh bìa" 
                       className="w-full h-full object-cover opacity-90 transition-opacity" 
                       onError={(e) => {
                         // Nếu ảnh hỏng hoặc lỗi mạng, tự động fallback về ảnh mặc định an toàn
@@ -1891,7 +2134,7 @@ const TripDetail = () => {
                                   </div>
                                   <div>
                                     <span className="text-sm font-bold text-slate-900 block leading-none mb-1">{review.authorName}</span>
-                                    <span className="text-[11px] text-slate-500 flex items-center gap-1">Local Guide • 1 bài đánh giá</span>
+                                    <span className="text-[11px] text-slate-500 flex items-center gap-1">Hướng dẫn viên địa phương • 1 bài đánh giá</span>
                                   </div>
                                 </div>
                                 <button className="text-slate-400 hover:bg-slate-100 p-1 rounded-full"><MoreHorizontal className="w-4 h-4" /></button>
@@ -1951,7 +2194,7 @@ const TripDetail = () => {
                           if (!post.imageUrls || post.imageUrls.length === 0) return null;
                           return (
                             <div key={post.id} className="relative aspect-[4/5] rounded-2xl overflow-hidden group cursor-pointer shadow-sm border border-slate-200">
-                              <img src={post.imageUrls[0]} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="Checkin" />
+                              <img src={post.imageUrls[0]} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="Ảnh check-in" />
                               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 text-white">
                                 <span className="text-xs font-bold truncate drop-shadow-md">@{post.authorName}</span>
                               </div>
@@ -1973,7 +2216,7 @@ const TripDetail = () => {
             url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
             attribution="&copy; Google Maps"
           />
-          <MapSizeObserver resizeKey={activeSection} />
+          <MapSizeObserver resizeKey={isSidebarOpen} />
           <MapBounds
             points={mapStops.map(s => [s.lat, s.lng])}
             boundsKey={boundsKey}
@@ -2196,7 +2439,7 @@ const TripDetail = () => {
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-slate-800 font-medium">{d.placeName}</span>
-                          <span className="block text-xs text-slate-400">Day {d.dayNumber}</span>
+                          <span className="block text-xs text-slate-400">Ngày {d.dayNumber}</span>
                         </span>
                         {expenseForm.destinationId === d.id && <span className="text-xs font-bold text-[#FF5645]">Đã chọn</span>}
                       </button>
@@ -2470,8 +2713,38 @@ const TripDetail = () => {
         </div>
       )}
 
+      {membersDialogOpen && canEdit && (
+        <TripMembersDialog
+          trip={{ id: trip.id, title: trip.title }}
+          members={stackMembers}
+          myId={myId}
+          isOwner={myRole === 'OWNER'}
+          onManage={() => { setMembersDialogOpen(false); setShareModalView('manage'); }}
+          onClose={() => setMembersDialogOpen(false)}
+        />
+      )}
+
+      {coverPickerOpen && canEdit && (
+        <CoverImagePicker
+          tripId={trip.id}
+          currentUrl={trip.coverImageUrl}
+          onChanged={(patch) => setTrip((prev) => (prev ? { ...prev, ...patch } : prev))}
+          onClose={() => setCoverPickerOpen(false)}
+        />
+      )}
+
+      {shareModalView && myRole === 'OWNER' && (
+        <ShareTripModal
+          key={shareModalView}
+          trip={{ id: trip.id, title: trip.title }}
+          initialView={shareModalView}
+          onChanged={() => setMembersReload((n) => n + 1)}
+          onClose={() => { setShareModalView(null); setMembersReload((n) => n + 1); }}
+        />
+      )}
+
       {/* AI Travel Assistant dạng bong bóng nổi, dùng được ở mọi tab của TripDetail. */}
-      {trip?.id && (
+      {trip?.id && !isViewer && (
         <AiAssistantChat
           tripId={trip.id}
           trip={trip}
@@ -2484,13 +2757,6 @@ const TripDetail = () => {
 
 const ChevronDownIcon = ({ isOpen }) => (
   <svg className={`w-4 h-4 transition-transform ${isOpen ? '' : '-rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-);
-
-const ReservationIcon = ({ icon, label }) => (
-  <div className="flex flex-col items-center gap-1.5 cursor-pointer hover:text-slate-900 transition-colors">
-    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm border border-slate-100 text-slate-500">{icon}</div>
-    <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
-  </div>
 );
 
 export default TripDetail;

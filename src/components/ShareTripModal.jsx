@@ -84,9 +84,10 @@ const Avatar = ({ src, name, size = 'h-9 w-9' }) =>
  *   trip      : { id, title }
  *   onClose   : đóng modal
  *   onChanged : (tuỳ chọn) gọi khi danh sách thành viên đổi, để trang cha tải lại
+ *   initialView : 'share' (mặc định) | 'manage' (mở thẳng màn quản lý bạn đồng hành)
  */
-const ShareTripModal = ({ trip, onClose, onChanged }) => {
-  const [view, setView] = useState('share'); // share | manage
+const ShareTripModal = ({ trip, onClose, onChanged, initialView = 'share' }) => {
+  const [view, setView] = useState(initialView); // share | manage
   const [role, setRole] = useState('EDITOR');
 
   // ----- link chia sẻ -----
@@ -109,7 +110,7 @@ const ShareTripModal = ({ trip, onClose, onChanged }) => {
   // ----- quản lý -----
   const [members, setMembers] = useState([]);
   const [invitations, setInvitations] = useState([]);
-  const [manageLoading, setManageLoading] = useState(false);
+  const [manageLoading, setManageLoading] = useState(initialView === 'manage'); // mở thẳng màn quản lý: đang tải ngay từ đầu
   const [manageError, setManageError] = useState('');
   const [busyKey, setBusyKey] = useState('');
   const [confirmRemoveId, setConfirmRemoveId] = useState(null);
@@ -375,6 +376,31 @@ const ShareTripModal = ({ trip, onClose, onChanged }) => {
       setManageLoading(false);
     }
   }, [tripId]);
+
+  // Mở thẳng màn quản lý (từ hộp thoại thành viên): tải ngay khi mở
+  useEffect(() => {
+    if (initialView !== 'manage') return undefined;
+    let cancelled = false;
+    Promise.all([
+      axios.get(`${API}/api/trips/${tripId}/members`, { headers: authHeaders() }),
+      axios.get(`${API}/api/trips/${tripId}/invitations`, { headers: authHeaders() }),
+    ])
+      .then(([m, i]) => {
+        if (cancelled) return;
+        setMembers(m.data || []);
+        setInvitations(i.data || []);
+        manageStale.current = false;
+      })
+      .catch((error) => {
+        if (!cancelled) setManageError(errorText(error, 'Không tải được danh sách bạn đồng hành.'));
+      })
+      .finally(() => {
+        if (!cancelled) setManageLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tripId, initialView]);
 
   const openManage = () => {
     setView('manage');

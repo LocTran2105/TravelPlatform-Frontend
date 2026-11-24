@@ -1,21 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import { Compass, Pencil, FileText, Share2, MapPin } from 'lucide-react';
+import { Compass, Pencil, FileText } from 'lucide-react';
 import UserMenu from './UserMenu';
 import FollowButton from './FollowButton';
 import FollowListModal from './FollowListModal';
-
-// Biểu tượng + nhãn quyền hiển thị của bài viết
-const VISIBILITY_INFO = {
-  PUBLIC: { icon: '🌎', label: 'Công khai' },
-  FOLLOWERS: { icon: '👥', label: 'Người theo dõi' },
-  FRIENDS: { icon: '🤝', label: 'Bạn bè' },
-  PRIVATE: { icon: '🔒', label: 'Chỉ mình tôi' },
-};
+import TripCard from './TripCard';
+import useTripActions from './useTripActions';
+import PostCard from './PostCard';
+import PostDialog from './PostDialog';
+import usePostActions from './usePostActions';
 
 const PublicProfile = () => {
-  const [posts, setPosts] = useState([]); // Khai báo state (post)
+  const [posts, setPosts] = useState([]);
+  const [postsError, setPostsError] = useState(false);
+  // Bài viết đang mở trong hộp thoại: nhớ cả hồ sơ đang xem để tự đóng khi chuyển sang hồ sơ khác
+  const [openPost, setOpenPost] = useState(null); // { id, owner }
   const { username } = useParams(); // URL có thể là /profile hoặc /profile/loctran
   const navigate = useNavigate();
   
@@ -103,10 +103,12 @@ const PublicProfile = () => {
         // XỬ LÝ BÀI ĐĂNG (tách riêng, không nằm trong readPage nữa)
         if (postsRes.status === 'fulfilled') {
           const postsData = postsRes.value.data;
-          setPosts(Array.isArray(postsData) ? postsData : postsData?.content ?? []);
+          setPosts(Array.isArray(postsData) ? postsData : postsData?.items ?? postsData?.content ?? []);
+          setPostsError(false);
         } else {
           console.error('Không tải được bài đăng', postsRes.reason);
           setPosts([]);
+          setPostsError(true);
         }
 
         // Nếu request lỗi thì result.value không tồn tại → phải kiểm tra trước,
@@ -162,6 +164,33 @@ const PublicProfile = () => {
 
   const isMyProfile = currentUser && profileUser && currentUser.username === profileUser.username;
 
+  // Chia sẻ / đổi quyền hiển thị / xóa chuyến đi: giống hệt trang chủ (chỉ chủ hồ sơ mới có)
+  const tripActions = useTripActions({
+    onDeleted: (id) => setTrips((prev) => prev.filter((t) => t.id !== id)),
+    onVisibilityChanged: (id, visibility) =>
+      setTrips((prev) => prev.map((t) => (t.id === id ? { ...t, visibility } : t))),
+  });
+
+  // Thả tim / số bình luận của bài viết (dùng chung cho thẻ và hộp thoại)
+  const postActions = usePostActions(setPosts);
+  const dialogPost = openPost && profileUser && openPost.owner === profileUser.username
+    ? posts.find((p) => p.id === openPost.id) || null
+    : null;
+  const closePost = useCallback(() => { setOpenPost(null); }, []);
+
+  const reloadPosts = () => {
+    if (!profileUser) return;
+    const token = localStorage.getItem('token');
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    axios.get(`http://localhost:8080/api/posts/user/${encodeURIComponent(profileUser.username)}`, { headers })
+      .then((res) => {
+        const data = res.data;
+        setPosts(Array.isArray(data) ? data : data?.items ?? data?.content ?? []);
+        setPostsError(false);
+      })
+      .catch(() => setPostsError(true));
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-[#FF5645]"></div></div>;
   if (!profileUser) return <div className="text-center mt-20 font-bold text-xl">Không tìm thấy người dùng.</div>;
 
@@ -184,7 +213,7 @@ const PublicProfile = () => {
         <aside className="w-full md:w-[280px] shrink-0 h-fit rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm">
           <div className="mx-auto flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-slate-100 border border-slate-200">
             {profileUser.avatar ? (
-              <img src={profileUser.avatar} alt="Avatar" className="h-full w-full object-cover" />
+              <img src={profileUser.avatar} alt="Ảnh đại diện" className="h-full w-full object-cover" />
             ) : (
               <span className="text-4xl font-bold text-slate-400">{profileUser.fullName.charAt(0).toUpperCase()}</span>
             )}
@@ -195,17 +224,17 @@ const PublicProfile = () => {
           <div className="flex justify-center gap-8 mb-6 border-y border-slate-100 py-4">
             <div className="cursor-pointer group" onClick={() => openFollowModal('followers')}>
               <div className="text-lg font-black group-hover:text-[#FF5645] transition-colors">{followerCount}</div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Followers</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Người theo dõi</div>
             </div>
             <div className="cursor-pointer group" onClick={() => openFollowModal('following')}>
               <div className="text-lg font-black group-hover:text-[#FF5645] transition-colors">{followingCount}</div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Following</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Đang theo dõi</div>
             </div>
           </div>
 
           {isMyProfile ? (
             <Link to="/settings" className="flex items-center justify-center gap-2 w-full rounded-full bg-slate-100 py-3 text-sm font-bold text-slate-800 hover:bg-slate-200 transition-colors">
-              <Pencil className="h-4 w-4" /> Edit Profile
+              <Pencil className="h-4 w-4" /> Chỉnh sửa hồ sơ
             </Link>
           ) : (
             <div className="w-full">
@@ -249,14 +278,14 @@ const PublicProfile = () => {
               className={`flex items-center gap-2 pb-3 font-bold transition-all relative ${activeTab === 'trips' ? 'text-[#FF5645]' : 'text-slate-500 hover:text-slate-800'}`}
               onClick={() => setActiveTab('trips')}
             >
-              <Compass className="h-4.5 w-4.5" /> Trip plans
+              <Compass className="h-4.5 w-4.5" /> Kế hoạch chuyến đi
               {activeTab === 'trips' && <div className="absolute -bottom-[2px] left-0 right-0 h-[2px] bg-[#FF5645]" />}
             </button>
             <button 
               className={`flex items-center gap-2 pb-3 font-bold transition-all relative ${activeTab === 'posts' ? 'text-[#FF5645]' : 'text-slate-500 hover:text-slate-800'}`}
               onClick={() => setActiveTab('posts')}
             >
-              <FileText className="h-4.5 w-4.5" /> Journals
+              <FileText className="h-4.5 w-4.5" /> Bài viết
               {activeTab === 'posts' && <div className="absolute -bottom-[2px] left-0 right-0 h-[2px] bg-[#FF5645]" />}
             </button>
           </div>
@@ -269,97 +298,47 @@ const PublicProfile = () => {
                     </div>
                 ) : (
                     trips.map(trip => (
-                        <div key={trip.id} onClick={() => navigate(`/trips/${trip.id}`)} className="group cursor-pointer rounded-2xl bg-white overflow-hidden border border-slate-200 hover:shadow-lg transition-all">
-                            <div className="h-40 relative flex items-center justify-center bg-gradient-to-br from-orange-100 via-red-50 to-slate-100">
-                                <div className="flex items-center gap-2 px-4 text-[#FF5645]">
-                                    <MapPin className="w-6 h-6 shrink-0" />
-                                    <span className="text-lg font-extrabold truncate">{trip.destination || 'Chuyến đi'}</span>
-                                </div>
-                                <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-md rounded-full px-3 py-1 text-xs font-bold text-white flex items-center gap-1">
-                                    <Share2 className="w-3 h-3" /> Share
-                                </div>
-                            </div>
-                            <div className="p-4">
-                                <h3 className="font-bold text-slate-900 group-hover:text-[#FF5645] truncate">{trip.title}</h3>
-                                <p className="mt-1 text-xs text-slate-500">
-                                    {trip.startDate
-                                        ? `${new Date(trip.startDate).toLocaleDateString('vi-VN')}${trip.endDate ? ' - ' + new Date(trip.endDate).toLocaleDateString('vi-VN') : ''}`
-                                        : 'Chưa chọn ngày'}
-                                    {/* Chỉ chủ hồ sơ mới thấy chuyến đi đang để quyền gì */}
-                                    {isMyProfile && VISIBILITY_INFO[trip.visibility] && (
-                                        <span title={`Quyền xem: ${VISIBILITY_INFO[trip.visibility].label}`}>
-                                            {' • '}{VISIBILITY_INFO[trip.visibility].icon} {VISIBILITY_INFO[trip.visibility].label}
-                                        </span>
-                                    )}
-                                </p>
-                            </div>
-                        </div>
+                        <TripCard
+                            key={trip.id}
+                            trip={trip}
+                            canManage={Boolean(isMyProfile)}
+                            ownerInitial={profileUser.fullName}
+                            busy={tripActions.busyOf(trip.id)}
+                            onOpen={() => navigate(`/trips/${trip.id}`)}
+                            onShare={() => tripActions.openShare(trip)}
+                            onChangeVisibility={(value) => tripActions.changeVisibility(trip, value)}
+                            onDelete={() => tripActions.askDelete(trip)}
+                        />
                     ))
                 )}
              </div>
           ) : (
              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                {posts.length === 0 ? (
+                {postsError ? (
+                    <div className="col-span-full py-20 text-center">
+                        <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                        <p className="text-slate-500 font-medium">Không tải được bài viết.</p>
+                        <button
+                          type="button"
+                          onClick={reloadPosts}
+                          className="mt-4 rounded-full bg-slate-900 px-5 py-2 text-sm font-bold text-white hover:bg-slate-800"
+                        >
+                          Thử lại
+                        </button>
+                    </div>
+                ) : posts.length === 0 ? (
                     <div className="col-span-full py-20 text-center">
                         <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
                         <p className="text-slate-500 font-medium">Người dùng chưa có bài viết nào.</p>
                     </div>
                 ) : (
                     posts.map(post => (
-                        <div 
-                          key={post.id} 
-                          onClick={() => navigate(`/posts/${post.id}`)} // Giả định bạn có trang chi tiết bài viết
-                          className="group cursor-pointer rounded-2xl bg-white overflow-hidden border border-slate-200 hover:shadow-lg transition-all"
-                        >
-                            <div className="h-64 bg-slate-100 relative overflow-hidden">
-                                {post.imageUrls && post.imageUrls.length > 0 ? (
-                                    <img 
-                                      src={post.imageUrls[0]} 
-                                      alt="Post thumbnail" 
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                                    />
-                                ) : post.videoUrls && post.videoUrls.length > 0 ? (
-                                    <video 
-                                      src={post.videoUrls[0]} 
-                                      className="w-full h-full object-cover" 
-                                      muted 
-                                      loop 
-                                      playsInline
-                                    />
-                                ) : (
-                                    <div className="flex items-center justify-center h-full w-full bg-slate-200 text-slate-400">
-                                        <FileText className="w-10 h-10" />
-                                    </div>
-                                )}
-                                
-                                {/* Icon báo hiệu có nhiều ảnh/video */}
-                                {((post.imageUrls?.length || 0) + (post.videoUrls?.length || 0)) > 1 && (
-                                   <div className="absolute top-3 right-3 bg-black/60 rounded p-1.5 text-white">
-                                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M4 4h12v12H4zM2 2v16h16V2zM20 6h2v16H6v-2h14z"/></svg>
-                                   </div>
-                                )}
-                            </div>
-                            
-                            <div className="p-4">
-                                <p className="text-sm text-slate-500 mb-1">
-                                    {new Date(post.createdAt).toLocaleDateString('vi-VN')}
-                                    {/* Chỉ chủ hồ sơ mới thấy bài đang để quyền gì */}
-                                    {isMyProfile && VISIBILITY_INFO[post.visibility] && (
-                                        <span title={`Quyền xem: ${VISIBILITY_INFO[post.visibility].label}`}>
-                                            {' • '}{VISIBILITY_INFO[post.visibility].icon} {VISIBILITY_INFO[post.visibility].label}
-                                        </span>
-                                    )}
-                                </p>
-                                <p className="font-medium text-slate-900 line-clamp-2 leading-snug">
-                                    {post.caption || "Không có tiêu đề"}
-                                </p>
-                                {post.locationName && (
-                                   <p className="text-xs text-[#FF5645] mt-2 font-bold truncate">
-                                      📍 {post.locationName}
-                                   </p>
-                                )}
-                            </div>
-                        </div>
+                        <PostCard
+                            key={post.id}
+                            post={post}
+                            canManage={Boolean(isMyProfile)}
+                            onOpen={() => { postActions.clearNotice(); setOpenPost({ id: post.id, owner: profileUser.username }); }}
+                        />
                     ))
                 )}
              </div>
@@ -395,6 +374,22 @@ const PublicProfile = () => {
           }
         }}
       />
+
+      {/* Hộp thoại xem bài viết */}
+      {dialogPost && (
+        <PostDialog
+          post={dialogPost}
+          currentUser={currentUser}
+          showVisibility={Boolean(isMyProfile)}
+          notice={postActions.notice}
+          onClose={closePost}
+          onToggleLike={postActions.toggleLike}
+          onCommentCount={postActions.setCommentCount}
+        />
+      )}
+
+      {/* Hộp thoại xác nhận xóa / báo lỗi và modal chia sẻ chuyến đi */}
+      {tripActions.dialogs}
     </div>
   );
 };
