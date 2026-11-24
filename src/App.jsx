@@ -1,4 +1,3 @@
-
 import { useEffect } from 'react';
 import {
   BrowserRouter,
@@ -14,10 +13,13 @@ import Home from './components/Home';
 import Login from './components/Login';
 import Register from './components/Register';
 import ResetPassword from './components/ResetPassword';
-import Profile from './components/Profile';
+import Profile from './components/Profile'; // Đây là trang Settings sửa mật khẩu/tên
 import PlanTrip from './components/PlanTrip';
 import TripDetail from './components/TripDetail';
 import Community from './components/Community';
+import PublicProfile from './components/PublicProfile';
+import InvitePage from './components/InvitePage';
+import SharePage from './components/SharePage';
 
 // Phân quyền và Layout
 import ProtectedRoute from './routes/ProtectedRoute';
@@ -34,9 +36,11 @@ import PartnerSubmissions from './pages/partner/PartnerSubmissions';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminApplications from './pages/admin/AdminApplications';
 import AdminSubmissions from './pages/admin/AdminSubmissions';
+
 // CSS
 import './styles/partner-admin.css';
 import './styles/portal-typography.css';
+
 
 function App() {
   // Kiểm tra JWT khi mở ứng dụng
@@ -63,9 +67,21 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-        <Route path="/profile" element={<Profile />} />
+        {/* Tách riêng trang Cài đặt tài khoản */}
+        <Route path="/settings" element={<Profile />} /> 
+        
+        {/* Trang hồ sơ mạng xã hội (Public Profile) */}
+        <Route path="/profile" element={<PublicProfile />} /> 
+        <Route path="/profile/:username" element={<PublicProfile />} />
+
         <Route path="/plan" element={<PlanTrip />} />
         <Route path="/trips/:tripId" element={<TripDetail />} />
+
+        {/* Mở lời mời tham gia chuyến đi từ link trong email */}
+        <Route path="/invite/:token" element={<InvitePage />} />
+
+        {/* Mở link chia sẻ chuyến đi (nút Share) */}
+        <Route path="/share/:token" element={<SharePage />} />
         <Route path="/community" element={<Community />} />
 
 

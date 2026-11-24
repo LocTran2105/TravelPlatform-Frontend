@@ -6,6 +6,9 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { Calendar, Users, ChevronDown, X, Compass, MapPin, AlertCircle  } from 'lucide-react';
 
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_COMPANIONS = 20;
+
 const PlanTrip = () => {
   const navigate = useNavigate();
 
@@ -31,7 +34,6 @@ const PlanTrip = () => {
   const dropdownRef = useRef(null);
 
   const [companionError, setCompanionError] = useState('');
-  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   // Xử lý Debounce gọi API Địa điểm (ĐÃ CHUYỂN SANG DÙNG PHOTON BỀN BỈ HƠN)
   useEffect(() => {
     const fetchPlaces = async () => {
@@ -106,52 +108,30 @@ const PlanTrip = () => {
     setShowDropdown(false);
   };
 
-  // Hỏi backend xem email đã có tài khoản chưa
-const isEmailRegistered = async (email) => {
-  const token = localStorage.getItem('token');
-  const res = await axios.get('http://localhost:8080/api/trips/check-email', {
-    params: { email },
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return res.data?.exists === true;
-};
+  // Thêm email vào danh sách mời. Email chưa có tài khoản vẫn hợp lệ: họ sẽ nhận thư mời
+  // và chỉ tham gia chuyến đi khi bấm "Tham gia" (đăng ký bằng đúng email đó nếu chưa có tài khoản).
+  const handleAddCompanion = (e) => {
+    e.preventDefault();
 
-const handleAddCompanion = async (e) => {
-  e.preventDefault();
-  if (isCheckingEmail) return;
+    const email = companionInput.trim().toLowerCase();
+    if (!email) return;
+    setCompanionError('');
 
-  const email = companionInput.trim().toLowerCase();
-  if (!email) return;
-  setCompanionError('');
-
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    setCompanionError('Email không hợp lệ.');
-    return;
-  }
-  if (companionEmails.includes(email)) {
-    setCompanionError('Email này đã có trong danh sách.');
-    return;
-  }
-
-  setIsCheckingEmail(true);
-  try {
-    const registered = await isEmailRegistered(email);
-    if (!registered) {
-      setCompanionError(
-        `Email ${email} chưa đăng ký tài khoản. Hãy mời họ đăng ký trước khi thêm vào chuyến đi.`
-      );
+    if (!EMAIL_REGEX.test(email)) {
+      setCompanionError('Email không hợp lệ.');
+      return;
+    }
+    if (companionEmails.includes(email)) {
+      setCompanionError('Email này đã có trong danh sách.');
+      return;
+    }
+    if (companionEmails.length >= MAX_COMPANIONS) {
+      setCompanionError(`Chỉ mời được tối đa ${MAX_COMPANIONS} người.`);
       return;
     }
     setCompanionEmails((prev) => [...prev, email]);
     setCompanionInput('');
-  } catch (error) {
-    console.error('Lỗi kiểm tra email:', error);
-    setCompanionError('Không thể kiểm tra email lúc này, vui lòng thử lại.');
-  } finally {
-    setIsCheckingEmail(false);
-  }
-};
+  };
 
   const handleRemoveCompanion = (emailToRemove) => {
     setCompanionEmails(companionEmails.filter((item) => item !== emailToRemove));
@@ -177,35 +157,24 @@ const handleAddCompanion = async (e) => {
       return;
     }
 
-    // Nếu đã gõ email nhưng chưa nhấn Enter thì vẫn kiểm tra và tính vào danh sách
+    // Nếu đã gõ email nhưng chưa nhấn Enter thì vẫn tính vào danh sách
     setCompanionError('');
     const finalCompanionEmails = [...companionEmails];
     const pendingEmail = companionInput.trim().toLowerCase();
     if (pendingEmail) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(pendingEmail)) {
+      if (!EMAIL_REGEX.test(pendingEmail)) {
         setCompanionError('Email không hợp lệ.');
         return;
       }
       if (!finalCompanionEmails.includes(pendingEmail)) {
-        try {
-          const registered = await isEmailRegistered(pendingEmail);
-          if (!registered) {
-            setCompanionError(
-              `Email ${pendingEmail} chưa đăng ký tài khoản. Hãy mời họ đăng ký trước khi thêm vào chuyến đi.`
-            );
-            return;
-          }
-        } catch (error) {
-          console.error('Lỗi kiểm tra email:', error);
-          setCompanionError('Không thể kiểm tra email lúc này, vui lòng thử lại.');
+        if (finalCompanionEmails.length >= MAX_COMPANIONS) {
+          setCompanionError(`Chỉ mời được tối đa ${MAX_COMPANIONS} người.`);
           return;
         }
         finalCompanionEmails.push(pendingEmail);
       }
     }
 
-    
     setIsLoading(true);
 
     try {
@@ -217,7 +186,6 @@ const handleAddCompanion = async (e) => {
         totalBudget: budgetValue,
         visibility: visibility,
         isPublic: visibility === 'PUBLIC',
-        memberCount: finalCompanionEmails.length + 1,
         companionEmails: finalCompanionEmails,
       };
 
@@ -375,10 +343,12 @@ const handleAddCompanion = async (e) => {
                 placeholder="Enter email to invite..."
                 className="outline-none flex-1 text-gray-700 font-medium placeholder-gray-400 bg-transparent min-w-[200px]"
               />
-              {isCheckingEmail && (
-                <span className="ml-3 whitespace-nowrap text-xs font-medium text-gray-400">Đang kiểm tra...</span>
-              )}
             </div>
+
+            <p className="mt-2 text-xs leading-relaxed text-gray-400">
+              Mỗi người nhận một email mời. Họ chỉ tham gia chuyến đi khi bấm chấp nhận,
+              chưa có tài khoản thì đăng ký bằng đúng email đó.
+            </p>
 
             {companionError && (
               <p className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-600">
@@ -417,9 +387,10 @@ const handleAddCompanion = async (e) => {
                 onChange={(e) => setVisibility(e.target.value)}
                 className="appearance-none bg-transparent font-bold outline-none cursor-pointer pr-7 text-sm w-full"
               >
-                <option value="PRIVATE">Private (Only you & mates)</option>
-                <option value="FRIENDS">Friends (Your followers)</option>
-                <option value="PUBLIC">Public (Community)</option>
+                <option value="PRIVATE">🔒 Private (Only you & mates)</option>
+                <option value="FOLLOWERS">👥 Followers (People who follow you)</option>
+                <option value="FRIENDS">🤝 Friends (You follow each other)</option>
+                <option value="PUBLIC">🌎 Public (Community)</option>
               </select>
               <ChevronDown className="w-4 h-4 absolute right-3 text-gray-400 pointer-events-none" />
             </div>

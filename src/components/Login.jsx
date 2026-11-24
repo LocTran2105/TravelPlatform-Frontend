@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   Mail,
   Lock,
@@ -14,9 +14,13 @@ import {
 } from 'lucide-react';
 import { GoogleLogin } from '@react-oauth/google';
 import { getHomePathForRole, normalizeRole } from '../utils/auth';
+import { getSafeRedirect, withRedirect } from '../utils/redirect';
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Địa chỉ cần quay lại sau khi đăng nhập (vd: trang chấp nhận lời mời từ email)
+  const redirect = getSafeRedirect(location.search);
 
   // State form (khởi tạo email và ghi nhớ đăng nhập từ localStorage)
   const [email, setEmail] = useState(() => {
@@ -99,7 +103,7 @@ const Login = () => {
 
       setSuccessMessage('Đăng nhập thành công! Đang chuyển hướng vào hệ thống...');
 
-      const targetPath = getHomePathForRole(data.role);
+      const targetPath = redirect || getHomePathForRole(data.role);
 
       setTimeout(() => {
         navigate(targetPath, { replace: true });
@@ -162,7 +166,7 @@ const Login = () => {
         localStorage.setItem('user', JSON.stringify(userInfo));
 
         // Điều hướng theo quyền tài khoản
-        navigate(getHomePathForRole(role), {
+        navigate(redirect || getHomePathForRole(role), {
           replace: true,
         });
       }
@@ -420,7 +424,7 @@ const Login = () => {
             <p className="text-xs text-slate-500 sm:text-sm">
               Bạn chưa có tài khoản?{' '}
               <Link
-                to="/register"
+                to={withRedirect('/register', redirect)}
                 className="font-semibold text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
               >
                 Đăng ký ngay miễn phí
