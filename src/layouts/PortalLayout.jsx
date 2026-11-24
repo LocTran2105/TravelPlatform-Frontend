@@ -1,15 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  MapPinned,
-  FileClock,
-  ClipboardCheck,
-  Building2,
-  ShieldCheck,
-  LogOut,
-  Menu,
-  X,
-  Compass,
+  LayoutDashboard, MapPinned, FileClock, ClipboardCheck, Building2,
+  ShieldCheck, LogOut, Menu, X, Compass, Home,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -41,11 +33,8 @@ export default function PortalLayout({ type }) {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [user] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('user') || '{}');
-    } catch {
-      return {};
-    }
+    try { return JSON.parse(localStorage.getItem('user') || '{}'); }
+    catch { return {}; }
   });
 
   const logout = () => {
@@ -53,20 +42,17 @@ export default function PortalLayout({ type }) {
     localStorage.removeItem('user');
     navigate('/login', { replace: true });
   };
-
   const closeMobile = () => setMobileOpen(false);
 
   return (
     <div className={`portal-shell portal-${config.accent}`}>
-      {mobileOpen && <button className="portal-mobile-overlay" onClick={closeMobile} aria-label="Đóng menu" />}
-
+      {mobileOpen && (
+        <button className="portal-mobile-overlay" onClick={closeMobile} aria-label="Đóng menu" />
+      )}
       <aside className={`portal-sidebar ${mobileOpen ? 'is-open' : ''}`}>
         <div className="portal-brand">
           <div className="portal-brand-mark"><Compass size={22} /></div>
-          <div>
-            <strong>Travel Platform</strong>
-            <span>{config.title}</span>
-          </div>
+          <div><strong>Travel Platform</strong><span>{config.title}</span></div>
           <button className="portal-icon-button portal-mobile-close" onClick={closeMobile} aria-label="Đóng menu">
             <X size={19} />
           </button>
@@ -75,17 +61,19 @@ export default function PortalLayout({ type }) {
         <div className="portal-sidebar-caption">WORKSPACE</div>
         <nav className="portal-nav">
           {config.links.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              onClick={closeMobile}
-              className={({ isActive }) => `portal-nav-link ${isActive ? 'active' : ''}`}
-            >
-              <Icon size={18} />
-              <span>{label}</span>
+            <NavLink key={to} to={to} end={end} onClick={closeMobile}
+              className={({ isActive }) => `portal-nav-link ${isActive ? 'active' : ''}`}>
+              <Icon size={18} /><span>{label}</span>
             </NavLink>
           ))}
+        </nav>
+
+        <div className="portal-sidebar-caption">TRAVEL PLATFORM</div>
+        <nav className="portal-nav">
+          <NavLink to="/home" end onClick={closeMobile}
+            className={({ isActive }) => `portal-nav-link ${isActive ? 'active' : ''}`}>
+            <Home size={18} /><span>Về trang chủ</span>
+          </NavLink>
         </nav>
 
         <div className="portal-sidebar-bottom">
@@ -93,9 +81,7 @@ export default function PortalLayout({ type }) {
             {type === 'admin' ? <ShieldCheck size={16} /> : <Building2 size={16} />}
             <span>{type === 'admin' ? 'Quản trị viên' : 'Đối tác du lịch'}</span>
           </div>
-          <button className="portal-logout" onClick={logout}>
-            <LogOut size={17} /> Đăng xuất
-          </button>
+          <button className="portal-logout" onClick={logout}><LogOut size={17} /> Đăng xuất</button>
         </div>
       </aside>
 
@@ -118,7 +104,6 @@ export default function PortalLayout({ type }) {
             </div>
           </div>
         </header>
-
         <div className="portal-content"><Outlet /></div>
       </main>
     </div>

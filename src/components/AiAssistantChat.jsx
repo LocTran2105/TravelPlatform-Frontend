@@ -96,9 +96,11 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
   const [conversationId, setConversationId] = useState(null);
   const [targetDayId, setTargetDayId] = useState(firstDayId);
   const [addingPlaceId, setAddingPlaceId] = useState(null);
+  const [placeCoverImages, setPlaceCoverImages] = useState({});
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const sendingRef = useRef(false);
+  const requestedCoverIdsRef = useRef(new Set());
 
   useEffect(() => {
     let active = true;
@@ -132,6 +134,34 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
   useEffect(() => {
     if (!targetDayId && firstDayId) setTargetDayId(firstDayId);
   }, [firstDayId, targetDayId]);
+
+  // Fetch all recommendation cover images in one request (no N+1 calls).
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const allIds = [...new Set(messages.flatMap((message) =>
+      (message.recommendations || [])
+        .map((place) => place?.placeId ?? place?.id)
+        .filter((id) => id != null && Number.isSafeInteger(Number(id)) && Number(id) > 0)
+        .map((id) => String(Number(id)))
+    ))];
+    const pendingIds = allIds.filter((id) => !requestedCoverIdsRef.current.has(id));
+    if (pendingIds.length === 0) return;
+
+    pendingIds.forEach((id) => requestedCoverIdsRef.current.add(id));
+    axios.get(`${API_BASE_URL}/api/v1/places/covers`, {
+      params: { placeIds: pendingIds.join(',') },
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(({ data }) => {
+      if (data && typeof data === 'object') {
+        setPlaceCoverImages((previous) => ({ ...previous, ...data }));
+      }
+    }).catch((error) => {
+      pendingIds.forEach((id) => requestedCoverIdsRef.current.delete(id));
+      console.warn('Không tải được ảnh đại diện địa điểm:', error);
+    });
+  }, [messages]);
 
   useEffect(() => {
     if (isOpen) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -222,14 +252,35 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
         const token = localStorage.getItem('token');
         if (!token) throw new Error('Bạn cần đăng nhập để thêm địa điểm.');
         const coordinates = getPlaceCoordinates(place);
+        const placeIdValue = place?.placeId ?? place?.id ?? null;
+        const placeId = Number(placeIdValue);
+        if (!Number.isSafeInteger(placeId) || placeId <= 0) {
+          throw new Error('Địa điểm đề xuất chưa có Place ID hợp lệ nên chưa thể liên kết vào bản đồ.');
+        }
+
+        const selectedDay = tripDays.find((day) => String(day.id) === String(selectedDayId));
+        const orderIndex = Array.isArray(selectedDay?.destinations)
+          ? selectedDay.destinations.length
+          : 0;
+
+        const rawCategory = String(place?.category || place?.placeType || 'ATTRACTION').toUpperCase();
+        const itemType = rawCategory === 'CAFE'
+          ? 'RESTAURANT'
+          : ['ACCOMMODATION', 'RESTAURANT', 'TRANSPORT', 'ACTIVITY', 'OTHER'].includes(rawCategory)
+            ? rawCategory
+            : 'ATTRACTION';
+
         await axios.post(
           `${API_BASE_URL}/api/trips/days/${selectedDayId}/destinations`,
           {
+            placeId,
             placeName,
             latitude: Number.isFinite(coordinates.latitude) ? coordinates.latitude : null,
             longitude: Number.isFinite(coordinates.longitude) ? coordinates.longitude : null,
+            itemType,
             note: place.address || '',
             estimatedCost: getPlacePrice(place),
+            orderIndex,
           },
           { headers: { Authorization: `Bearer ${token}` } }
         );
@@ -355,6 +406,9 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
                       const distanceKm = getPlaceDistanceKm(place);
                       const coordinates = getPlaceCoordinates(place);
                       const placeKey = place?.placeId ?? place?.id ?? `${placeName}-${placeIndex}`;
+                      const coverImageUrl = place?.coverImageUrl
+                        || placeCoverImages[String(place?.placeId ?? place?.id ?? '')]
+                        || null;
                       const isAdding = addingPlaceId === String(placeKey);
 
                       return (
@@ -366,14 +420,30 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
                           title="Kéo thẻ này và thả vào một ngày trong Itinerary"
                         >
                           <div className="flex items-start gap-3 p-3">
-                            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-                              <MapPin className="h-5 w-5" />
-                            </div>
+                            {coverImageUrl ? (
+                              <img
+                                src={coverImageUrl}
+                                alt={placeName}
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                                className="mt-0.5 h-16 w-20 shrink-0 rounded-xl bg-slate-100 object-cover"
+                                onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
+                              />
+                            ) : (
+                              <div className="mt-0.5 flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                                <MapPin className="h-5 w-5" />
+                              </div>
+                            )}
                             <div className="min-w-0 flex-1">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                   <p className="text-sm font-bold text-slate-900">{placeName}</p>
-                                  {place?.category && <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-500">{String(place.category).replaceAll('_', ' ')}</p>}
+                                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                    {place?.category && <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500">{String(place.category).replaceAll('_', ' ')}</span>}
+                                    {String(place?.provider || '').toUpperCase() === 'PARTNER' && (
+                                      <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200">Đối tác đã xác minh</span>
+                                    )}
+                                  </div>
                                 </div>
                                 <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-400 group-hover:text-slate-600">
                                   <GripVertical className="h-3.5 w-3.5" /> Kéo
@@ -407,9 +477,11 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
                         </article>
                       );
                     })}
-                    <p className="px-1 text-[10px] text-slate-400">
-                      Dữ liệu địa điểm từ nguồn OpenStreetMap khi có attribution: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">© OpenStreetMap contributors · ODbL</a>
-                    </p>
+                    {message.recommendations.some((place) => String(place?.provider || '').toUpperCase() === 'OSM') && (
+                      <p className="px-1 text-[10px] text-slate-400">
+                        Một phần dữ liệu địa điểm từ <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">© OpenStreetMap contributors · ODbL</a>
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

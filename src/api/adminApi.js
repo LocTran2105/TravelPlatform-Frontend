@@ -1,54 +1,69 @@
 
 import axiosClient from './axiosClient';
 
-// Các endpoint Admin được gom tại đây để dễ điều chỉnh
-// khi đối chiếu với @RequestMapping trong Backend.
 export const ADMIN_ENDPOINTS = {
   dashboard: '/api/admin/dashboard',
   applications: '/api/admin/partner-applications',
-  businessSubmissions: '/api/admin/partner-businesses/submissions',
+  businessSubmissions: '/api/admin/partner-submissions',
 };
 
 export const adminApi = {
-  // Dashboard
   getDashboard: () =>
-    axiosClient.get(ADMIN_ENDPOINTS.dashboard).then((r) => r.data),
+    axiosClient
+      .get(ADMIN_ENDPOINTS.dashboard)
+      .then((response) => response.data),
 
-  // Danh sách đơn đăng ký Partner
   getApplications: (params = {}) =>
-    axiosClient.get(ADMIN_ENDPOINTS.applications, { params }).then((r) => r.data),
+    axiosClient
+      .get(ADMIN_ENDPOINTS.applications, { params })
+      .then((response) => response.data),
 
-  // Duyệt đơn Partner
   approveApplication: (id, note = '') =>
-    axiosClient.put(
-      `${ADMIN_ENDPOINTS.applications}/${id}/approve`,
-      { note }
-    ).then((r) => r.data),
+    axiosClient
+      .put(`${ADMIN_ENDPOINTS.applications}/${id}/approve`, { note })
+      .then((response) => response.data),
 
-  // Từ chối đơn Partner
   rejectApplication: (id, note) =>
-    axiosClient.put(
-      `${ADMIN_ENDPOINTS.applications}/${id}/reject`,
-      { note }
-    ).then((r) => r.data),
+    axiosClient
+      .put(`${ADMIN_ENDPOINTS.applications}/${id}/reject`, { note })
+      .then((response) => response.data),
 
-  // Danh sách yêu cầu xác minh địa điểm
   getBusinessSubmissions: (params = {}) =>
-    axiosClient.get(ADMIN_ENDPOINTS.businessSubmissions, { params }).then((r) => r.data),
+    axiosClient
+      .get(ADMIN_ENDPOINTS.businessSubmissions, { params })
+      .then((response) => response.data),
 
-  // Phê duyệt địa điểm
-  approveBusinessSubmission: (id, note = '') =>
-    axiosClient.put(
-      `${ADMIN_ENDPOINTS.businessSubmissions}/${id}/approve`,
-      { note }
-    ).then((r) => r.data),
+  // Tìm kiếm các địa điểm OSM xung quanh tọa độ Partner cung cấp.
+  getOsmCandidates: (submissionId, params = {}) =>
+    axiosClient
+      .get(
+        `${ADMIN_ENDPOINTS.businessSubmissions}/${submissionId}/osm-candidates`,
+        {
+          params: {
+            radiusMeters: 2000,
+            ...params,
+          },
+        },
+      )
+      .then((response) => response.data),
 
-  // Từ chối địa điểm
+  // Admin xác nhận địa điểm trước khi phê duyệt.
+  // placeProvider: OSM hoặc PARTNER.
+  approveBusinessSubmission: (id, decision) =>
+    axiosClient
+      .put(
+        `${ADMIN_ENDPOINTS.businessSubmissions}/${id}/approve`,
+        decision,
+      )
+      .then((response) => response.data),
+
   rejectBusinessSubmission: (id, note) =>
-    axiosClient.put(
-      `${ADMIN_ENDPOINTS.businessSubmissions}/${id}/reject`,
-      { note }
-    ).then((r) => r.data),
+    axiosClient
+      .put(
+        `${ADMIN_ENDPOINTS.businessSubmissions}/${id}/reject`,
+        { note },
+      )
+      .then((response) => response.data),
 };
 
 export default adminApi;

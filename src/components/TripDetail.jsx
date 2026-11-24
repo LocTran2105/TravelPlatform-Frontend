@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import AiAssistantChat from './AiAssistantChat';
 import TripPlannerBoard from './TripPlannerBoard';
+import { MapHoverPreview, usePlaceCovers, getDestPlaceId } from './PlaceHoverPreview';
 
 // ================= COMPONENT HỖ TRỢ BẢN ĐỒ =================
 // boundsKey / activeKey là chuỗi/số ổn định: bản đồ chỉ di chuyển khi tập điểm hoặc điểm được chọn THẬT SỰ đổi,
@@ -87,6 +88,13 @@ function MapSizeObserver({ resizeKey }) {
 
   return null;
 }
+
+// Thẻ địa điểm AI (AiAssistantChat) gửi payload JSON với MIME này khi kéo.
+const PLACE_MIME_TYPE = 'application/x-travel-place';
+
+// Nền bản đồ OpenStreetMap (đúng định hướng OSM của dự án; không dùng tile Google không có giấy phép).
+const MAP_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const MAP_TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 // Mỗi ngày một màu (ngày 1 giữ màu thương hiệu) để phân biệt các ngày khi xem toàn bộ chuyến đi
 const DAY_COLORS = ['#FF5645', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6'];
@@ -495,6 +503,7 @@ const TripDetail = () => {
   
   const [focusedDayId, setFocusedDayId] = useState(null);
   const [activeDestination, setActiveDestination] = useState(null);
+  const activeDestinationRequestRef = useRef(0);
   const [routeData, setRouteData] = useState({}); // { [dayId]: { segments, legs, legByFrom } }
   const [mapPanelWidth, setMapPanelWidth] = useState(460);
   const [isResizingMap, setIsResizingMap] = useState(false);
@@ -533,6 +542,30 @@ const TripDetail = () => {
 
   // Panel thông tin bên bản đồ: đóng/mở độc lập với địa điểm đang được chọn
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+
+  // Card xem nhanh (ảnh + tên) khi lia chuột vào địa điểm trong danh sách hoặc marker trên bản đồ.
+  // source = 'list' -> marker được phóng to; source = 'map' -> giữ nguyên icon để không chớp khi con trỏ đang ở trên marker.
+  const [hover, setHover] = useState(null); // { id, source } | null
+  const hoverTimerRef = useRef(null);
+  const { covers: destCovers } = usePlaceCovers(trip);
+
+  const showHover = (id, source, delayMs = 0) => {
+    clearTimeout(hoverTimerRef.current);
+    if (delayMs > 0) {
+      hoverTimerRef.current = setTimeout(() => setHover({ id, source }), delayMs);
+    } else {
+      setHover({ id, source });
+    }
+  };
+  const hideHover = (id) => {
+    clearTimeout(hoverTimerRef.current);
+    setHover((current) => (current && (id == null || current.id === id) ? null : current));
+  };
+  useEffect(() => () => clearTimeout(hoverTimerRef.current), []);
+
+  // Kéo thẻ AI thả vào ngày: dropDayId = ngày đang được kéo qua, droppingDayId = ngày đang lưu.
+  const [dropDayId, setDropDayId] = useState(null);
+  const [droppingDayId, setDroppingDayId] = useState(null);
 
   // Dialog đánh giá hiện ra sau khi bấm "Đã đi"
   const [visitDialog, setVisitDialog] = useState(null); // { dest, dayDate }
@@ -698,15 +731,104 @@ const TripDetail = () => {
     } catch (err) { alert("Lỗi: " + (err.response?.data || err.message)); }
   };
 
+  // Thêm địa điểm đề xuất (đã có Place ID) vào một ngày. Dùng chung cho nút "Thêm" trong AI chat và kéo-thả.
+  // Backend lấy tên/tọa độ/loại/chi phí tham khảo từ bảng places khi có placeId, nên chỉ cần gửi ID.
+  const addRecommendedPlaceToDay = async (place, dayId) => {
+    const placeId = Number(place?.placeId ?? place?.id);
+    const placeName = place?.name || place?.placeName || 'Địa điểm';
+    if (!Number.isSafeInteger(placeId) || placeId <= 0) {
+      throw new Error('Địa điểm đề xuất chưa có Place ID hợp lệ nên chưa thể thêm vào lịch trình.');
+    }
+    const day = (trip?.tripDays || []).find(d => String(d.id) === String(dayId));
+    if (!day) throw new Error('Không tìm thấy ngày cần thêm trong chuyến đi.');
+    if ((day.destinations || []).some(d => getDestPlaceId(d) === placeId)) {
+      throw new Error(`${placeName} đã có trong Day ${day.dayNumber}.`);
+    }
+
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Bạn cần đăng nhập để thêm địa điểm.');
+    await axios.post(`http://localhost:8080/api/trips/days/${day.id}/destinations`, {
+      placeId,
+      placeName,
+      orderIndex: (day.destinations || []).length,
+    }, { headers: { Authorization: `Bearer ${token}` } });
+    await fetchTripDetails();
+    return day;
+  };
+
+  const hasPlacePayload = (event) => Array.from(event.dataTransfer?.types || []).includes(PLACE_MIME_TYPE);
+
+  // Gắn vào khối Day (Itinerary) và mục "Day N" ở sidebar để thả được từ mọi tab.
+  const getDayDropProps = (day) => ({
+    onDragOver: (event) => {
+      if (!hasPlacePayload(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      if (dropDayId !== day.id) setDropDayId(day.id);
+    },
+    onDragLeave: (event) => {
+      if (event.currentTarget.contains(event.relatedTarget)) return;
+      setDropDayId(current => (current === day.id ? null : current));
+    },
+    onDrop: async (event) => {
+      if (!hasPlacePayload(event)) return;
+      event.preventDefault();
+      setDropDayId(null);
+      let place;
+      try {
+        place = JSON.parse(event.dataTransfer.getData(PLACE_MIME_TYPE));
+      } catch {
+        return;
+      }
+      if (droppingDayId != null) return;
+      setDroppingDayId(day.id);
+      try {
+        await addRecommendedPlaceToDay(place, day.id);
+        // AiAssistantChat lắng nghe sự kiện này để báo "Đã thêm ... vào Day N".
+        window.dispatchEvent(new CustomEvent('travel-ai-place-added', {
+          detail: { tripId: trip?.id, placeName: place?.name, dayNumber: day.dayNumber },
+        }));
+      } catch (err) {
+        alert(getApiError(err, err?.message || 'Không thể thêm địa điểm vào lịch trình.'));
+      } finally {
+        setDroppingDayId(null);
+      }
+    },
+  });
+
   const handleDestinationClick = async (dest, idx) => {
+    // Đã mở panel chi tiết thì card xem nhanh không cần nữa (trên màn hình cảm ứng không có mouseleave để tự tắt).
+    hideHover();
+    const requestId = ++activeDestinationRequestRef.current;
     setActiveDestination({ ...dest, index: idx + 1 });
     setIsPanelOpen(true);
     setNewReviewFiles([]);
     setInfoTab('intro');
     setPlaceInfo({ extract: '', loading: true });
     
-    const fallbackImage = `https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=800&auto=format&fit=crop`; 
+    const fallbackImage = `https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=800&auto=format&fit=crop`;
     setCoverImage(fallbackImage);
+
+    // Destination linked to a canonical Place can use a verified Partner cover.
+    // The public-media API returns images only for OSM places whose Partner is APPROVED/PUBLISHED/OPEN.
+    let hasPartnerCover = false;
+    const linkedPlaceId = dest?.place?.id ?? dest?.placeId ?? null;
+    if (linkedPlaceId != null) {
+      try {
+        const token = localStorage.getItem('token');
+        const coverResponse = await axios.get('http://localhost:8080/api/v1/places/covers', {
+          params: { placeIds: String(linkedPlaceId) },
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const partnerCover = coverResponse.data?.[String(linkedPlaceId)];
+        if (partnerCover && requestId === activeDestinationRequestRef.current) {
+          setCoverImage(partnerCover);
+          hasPartnerCover = true;
+        }
+      } catch (error) {
+        console.warn('Không tải được ảnh Partner đã xác minh cho Place:', error);
+      }
+    }
 
     try {
       const wikiUrl = `https://vi.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(dest.placeName)}&format=json&origin=*`;
@@ -724,7 +846,9 @@ const TripDetail = () => {
       setPlacePosts(relatedPosts);
       
       const firstPostWithImg = relatedPosts.find(p => p.imageUrls && p.imageUrls.length > 0);
-      if (firstPostWithImg) setCoverImage(firstPostWithImg.imageUrls[0]);
+      if (!hasPartnerCover && firstPostWithImg && requestId === activeDestinationRequestRef.current) {
+        setCoverImage(firstPostWithImg.imageUrls[0]);
+      }
     } catch (e) { console.error(e); }
 
     fetchReviews(dest.placeName);
@@ -1185,7 +1309,9 @@ const TripDetail = () => {
             {isItineraryExpanded && (
               <div className="pl-9 space-y-1 mt-1">
                 {trip.tripDays?.map((day) => (
-                  <span key={day.id} onClick={() => handleScrollToDay(day.id)} className={`block px-3 py-1.5 text-sm cursor-pointer rounded-md transition-colors ${focusedDayId === day.id ? 'font-bold text-[#FF5645] bg-red-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}>Day {day.dayNumber}</span>
+                  <span key={day.id} {...getDayDropProps(day)} onClick={() => handleScrollToDay(day.id)} className={`block px-3 py-1.5 text-sm cursor-pointer rounded-md transition-colors ${dropDayId === day.id ? 'font-bold text-indigo-700 bg-indigo-50 ring-2 ring-indigo-300' : focusedDayId === day.id ? 'font-bold text-[#FF5645] bg-red-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}>
+                    Day {day.dayNumber}{droppingDayId === day.id ? ' · đang thêm…' : ''}
+                  </span>
                 ))}
               </div>
             )}
@@ -1359,8 +1485,11 @@ const TripDetail = () => {
                 <h2 className="text-3xl font-extrabold text-slate-900 mb-8">Itinerary</h2>
                 <div className="space-y-8">
                   {trip.tripDays?.map((day) => (
-                    <div key={day.id} ref={el => dayRefs.current[day.id] = el} className={`bg-white border rounded-3xl p-6 shadow-sm transition-all ${focusedDayId === day.id ? 'border-[#FF5645] ring-4 ring-[#FF5645]/10' : 'border-slate-200'}`}>
-                      <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-3 mb-6"><span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Day {day.dayNumber}</span><span className="text-slate-500">{day.dayDate}</span></h3>
+                    <div key={day.id} ref={el => dayRefs.current[day.id] = el} {...getDayDropProps(day)} className={`relative bg-white border rounded-3xl p-6 shadow-sm transition-all ${dropDayId === day.id ? 'border-indigo-400 ring-4 ring-indigo-100 bg-indigo-50/30' : focusedDayId === day.id ? 'border-[#FF5645] ring-4 ring-[#FF5645]/10' : 'border-slate-200'}`}>
+                      <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-3 mb-6"><span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Day {day.dayNumber}</span><span className="text-slate-500">{day.dayDate}</span>
+                        {dropDayId === day.id && <span className="ml-auto text-xs font-bold text-indigo-600">Thả để thêm vào Day {day.dayNumber}</span>}
+                        {droppingDayId === day.id && <span className="ml-auto text-xs font-bold text-slate-500">Đang thêm địa điểm…</span>}
+                      </h3>
                       
                       <div className="space-y-4 mb-4">
                         {(!day.destinations || day.destinations.length === 0) ? (
@@ -1375,11 +1504,13 @@ const TripDetail = () => {
 
                             return (
                               <div 
-                                key={dest.id} 
+                                key={dest.id}
+                                onMouseEnter={() => showHover(dest.id, 'list', 120)}
+                                onMouseLeave={() => hideHover(dest.id)}
                                 onClick={(e) => {
                                   if (e.target.closest('button') || e.target.closest('input')) return;
                                   handleDestinationClick(dest, idx);
-                                }} 
+                                }}
                                 className={`flex gap-3 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-all ${isActive ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-50'}`}
                               >
                                 <div className="flex flex-col items-center mt-2 w-8 shrink-0">
@@ -1970,8 +2101,8 @@ const TripDetail = () => {
         {/* BẢN ĐỒ LEAFLET CHÍNH */}
         <MapContainer center={[16.047079, 108.206230]} zoom={5} style={{ height: '100%', width: '100%' }} zoomControl={false}>
           <TileLayer
-            url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
-            attribution="&copy; Google Maps"
+            url={MAP_TILE_URL}
+            attribution={MAP_TILE_ATTRIBUTION}
           />
           <MapSizeObserver resizeKey={activeSection} />
           <MapBounds
@@ -2003,10 +2134,31 @@ const TripDetail = () => {
             <Marker
               key={s.id}
               position={[s.lat, s.lng]}
-              icon={getMarkerIcon(s.number, activeDestination?.id === s.id, s.color)}
-              eventHandlers={{ click: () => handleDestinationClick(s.dest, s.number - 1) }}
+              icon={getMarkerIcon(
+                s.number,
+                activeDestination?.id === s.id || (hover?.source === 'list' && hover.id === s.id),
+                s.color
+              )}
+              eventHandlers={{
+                click: () => handleDestinationClick(s.dest, s.number - 1),
+                mouseover: () => showHover(s.id, 'map'),
+                mouseout: () => hideHover(s.id),
+              }}
             />
           ))}
+
+          {/* Card ảnh + tên khi lia chuột vào địa điểm (từ danh sách hoặc marker) */}
+          {(() => {
+            // Không hiện card cho địa điểm đang mở sẵn trong panel chi tiết (panel đã có ảnh + tên).
+            const isShownInPanel = isPanelOpen && activeDestination?.id === hover?.id;
+            const hoveredStop = hover && !isShownInPanel ? mapStops.find(s => s.id === hover.id) : null;
+            return (
+              <MapHoverPreview
+                stop={hoveredStop || null}
+                coverUrl={hoveredStop ? destCovers[String(getDestPlaceId(hoveredStop.dest))] : null}
+              />
+            );
+          })()}
         </MapContainer>
         {unmappedDestinations.length > 0 && (
           <div className="absolute left-4 right-4 bottom-4 z-[900] rounded-xl bg-white/95 border border-amber-200 shadow-lg px-3 py-2 text-xs text-amber-800">
@@ -2476,6 +2628,7 @@ const TripDetail = () => {
           tripId={trip.id}
           trip={trip}
           onTripUpdated={fetchTripDetails}
+          onAddPlaceToDay={addRecommendedPlaceToDay}
         />
       )}
     </div>
@@ -2493,4 +2646,4 @@ const ReservationIcon = ({ icon, label }) => (
   </div>
 );
 
-export default TripDetail;
+export default TripDetail;  

@@ -33,8 +33,7 @@ import PartnerSubmissions from './pages/partner/PartnerSubmissions';
 // Admin
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminApplications from './pages/admin/AdminApplications';
-import AdminSubmissions from './pages/admin/Adminsubmissions';
-
+import AdminSubmissions from './pages/admin/AdminSubmissions';
 // CSS
 import './styles/partner-admin.css';
 import './styles/portal-typography.css';
