@@ -1,134 +1,33 @@
-import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { createPortal } from 'react-dom';
-import { MapContainer, Marker, useMap, useMapEvents, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
 import { 
   ArrowLeft, Calendar, MapPin, Plus, 
-  Search, X, Users, Receipt, 
-  Share2, MoreHorizontal, ChevronLeft, ChevronRight,
-  Wand2, Plane, Bed, Car, Train, CheckSquare, Compass,
+  X, Users, Receipt,
+  Share2, MoreHorizontal,
   LayoutDashboard, CalendarDays, Wallet, Camera,
-  Clock, MessageSquare, Star, Heart, Send, Image as ImageIcon, Play,
-  Utensils, Wine, Landmark, Ticket, ShoppingBag, ShoppingCart, Fuel, Trash2, Pencil,
-  ArrowUp, ArrowDown, CornerDownRight, Navigation
+  Star,
+  Trash2, Pencil
 } from 'lucide-react';
 import AiAssistantChat from './AiAssistantChat';
 import ShareTripModal from './ShareTripModal';
 import TripMembersStack from './TripMembersStack';
 import TripMembersDialog from './TripMembersDialog';
-import TripPlannerBoard from './TripPlannerBoard';
 import TripCoverImage from './TripCoverImage';
 import CoverImagePicker from './CoverImagePicker';
-import { MapHoverPreview, usePlaceCovers, usePlaceActivity, getDestPlaceId } from './PlaceHoverPreview';
-import ResilientTileLayer from './ResilientTileLayer';
-import DirectionsPanel from './DirectionsPanel';
+import { usePlaceCovers, usePlaceActivity, getDestPlaceId } from './PlaceHoverPreview';
+import ItineraryDay from './ItineraryDay';
+import PlaceInfoPanel, { MediaPicker } from './PlaceInfoPanel';
+import TripMap from './TripMap';
+import ExpenseDialogs from './ExpenseDialogs';
 import { presetForDay } from '../utils/directions';
-
-// ================= COMPONENT HỖ TRỢ BẢN ĐỒ =================
-// boundsKey / activeKey là chuỗi/số ổn định: bản đồ chỉ di chuyển khi tập điểm hoặc điểm được chọn THẬT SỰ đổi,
-// không bị giật mỗi lần sửa ghi chú, "Đã đi", giờ... (những thao tác làm đổi tham chiếu mảng nhưng không đổi toạ độ)
-function MapBounds({ points, boundsKey, activePoint, activeKey }) {
-  const map = useMap();
-  const pointsRef = useRef(points);
-  const activePointRef = useRef(activePoint);
-  pointsRef.current = points;
-  activePointRef.current = activePoint;
-
-  // Leaflet cần đo lại kích thước sau khi đổi tab hoặc kéo thanh chia panel.
-  useEffect(() => {
-    let frame1 = 0;
-    let frame2 = 0;
-    frame1 = requestAnimationFrame(() => {
-      frame2 = requestAnimationFrame(() => {
-        map.invalidateSize({ pan: false, debounceMoveend: true });
-        if (activePointRef.current) {
-          map.flyTo(activePointRef.current, 15, { animate: true, duration: 0.8 });
-        } else if (activeKey) {
-          return;
-        } else if (pointsRef.current.length === 1) {
-          map.setView(pointsRef.current[0], 15, { animate: true });
-        } else if (pointsRef.current.length > 1) {
-          map.fitBounds(L.latLngBounds(pointsRef.current), {
-            padding: [44, 44], maxZoom: 15, animate: true,
-          });
-        }
-      });
-    });
-    return () => {
-      cancelAnimationFrame(frame1);
-      cancelAnimationFrame(frame2);
-    };
-  }, [boundsKey, activeKey, map]);
-
-  return null;
-}
-
-// Bấm vào vùng trống của bản đồ -> bỏ ghim thẻ xem nhanh.
-function MapBackgroundClick({ onClick }) {
-  useMapEvents({ click: onClick });
-  return null;
-}
-
-function MapSizeObserver({ resizeKey }) {
-  const map = useMap();
-
-  useEffect(() => {
-    const container = map.getContainer();
-    const observedElement = container.parentElement || container;
-    let frame = 0;
-    const invalidate = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        map.invalidateSize({ pan: false, debounceMoveend: true });
-      });
-    };
-
-    let observer;
-    if (typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(invalidate);
-      observer.observe(observedElement);
-    }
-    window.addEventListener('resize', invalidate);
-    invalidate();
-
-    return () => {
-      cancelAnimationFrame(frame);
-      observer?.disconnect();
-      window.removeEventListener('resize', invalidate);
-    };
-  }, [map, resizeKey]);
-
-  return null;
-}
+import { DAY_COLORS, formatFullDate, formatVND, EXPENSE_CATEGORIES, CATEGORY_MAP } from '../utils/tripDetail';
 
 // Thẻ địa điểm AI (AiAssistantChat) gửi payload JSON với MIME này khi kéo.
 const PLACE_MIME_TYPE = 'application/x-travel-place';
 // Kéo thả để sắp xếp lại địa điểm đã có trong lịch trình (trong ngày hoặc sang ngày khác).
 const DEST_MIME_TYPE = 'application/x-travel-destination';
-
-// Mỗi ngày một màu (ngày 1 giữ màu thương hiệu) để phân biệt các ngày khi xem toàn bộ chuyến đi
-const DAY_COLORS = ['#FF5645', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6'];
-
-// Cache icon: cùng (số, trạng thái, màu) dùng lại 1 icon, tránh Leaflet vẽ lại marker ở mỗi lần render
-const markerIconCache = new Map();
-const getMarkerIcon = (number, isActive, color) => {
-  const key = `${number}|${isActive}|${color}`;
-  if (!markerIconCache.has(key)) {
-    const size = isActive ? 36 : 24;
-    const shadow = isActive ? `0 4px 10px ${color}99` : '0 2px 5px rgba(0,0,0,0.3)';
-    const border = isActive ? '3px solid white' : '2px solid white';
-    markerIconCache.set(key, L.divIcon({
-      className: 'custom-div-icon',
-      html: `<div style="background-color: ${color}; color: white; width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: ${isActive ? '16px' : '12px'}; border: ${border}; box-shadow: ${shadow}; transition: all 0.3s ease;">${number}</div>`,
-      iconSize: [size, size],
-      iconAnchor: [size / 2, size / 2]
-    }));
-  }
-  return markerIconCache.get(key);
-};
 
 // '2026-10-14' -> '14/10'
 const formatDayDate = (d) => {
@@ -136,51 +35,12 @@ const formatDayDate = (d) => {
   return m ? `${m[3]}/${m[2]}` : (d || '');
 };
 
-// '2026-12-01' -> 'Thứ ba, 01/12/2026'
-const WEEKDAYS = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
-const formatFullDate = (d) => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || ''));
-  if (!m) return d || '';
-  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  return `${WEEKDAYS[date.getDay()]}, ${m[3]}/${m[2]}/${m[1]}`;
-};
-
 // Các phần của trang, theo thứ tự từ trên xuống (cuộn liên tục kiểu Wanderlog)
 const SECTION_IDS = ['overview', 'itinerary', 'budget'];
 const SPY_OFFSET = 140; // phần nào chạm vạch cách mép trên khung cuộn 140px thì được coi là đang xem
 
-// 48 mốc giờ: 00:00, 00:30, ... 23:30
-const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) =>
-  `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`
-);
-
-// ================= ĐÍNH KÈM ẢNH / VIDEO CHO ĐÁNH GIÁ =================
-// Backend (PlaceReviewService) cũng kiểm tra lại các giới hạn này
-const MAX_MEDIA_FILES = 5;
-const MAX_IMAGE_MB = 10;
-const MAX_VIDEO_MB = 50;
-const MAX_TOTAL_MB = 100; // khớp spring.servlet.multipart.max-request-size
-
 // ================= NGÂN SÁCH & CHI TIÊU =================
 const MAX_MONEY = 1_000_000_000_000; // 1.000 tỷ ₫, khớp giới hạn kiểm tra ở backend
-const formatVND = (n) => `${Number(n || 0).toLocaleString('vi-VN')} ₫`;
-
-// Danh mục chi phí (key khớp với backend: ExpenseService.CATEGORIES)
-const EXPENSE_CATEGORIES = [
-  { key: 'FLIGHTS', label: 'Vé máy bay', Icon: Plane },
-  { key: 'LODGING', label: 'Lưu trú', Icon: Bed },
-  { key: 'CAR_RENTAL', label: 'Thuê xe', Icon: Car },
-  { key: 'TRANSIT', label: 'Di chuyển', Icon: Train },
-  { key: 'FOOD', label: 'Ăn uống', Icon: Utensils },
-  { key: 'DRINKS', label: 'Đồ uống', Icon: Wine },
-  { key: 'SIGHTSEEING', label: 'Tham quan', Icon: Landmark },
-  { key: 'ACTIVITIES', label: 'Hoạt động', Icon: Ticket },
-  { key: 'SHOPPING', label: 'Mua sắm', Icon: ShoppingBag },
-  { key: 'GAS', label: 'Xăng dầu', Icon: Fuel },
-  { key: 'GROCERIES', label: 'Tạp hóa', Icon: ShoppingCart },
-  { key: 'OTHER', label: 'Khác', Icon: Receipt },
-];
-const CATEGORY_MAP = Object.fromEntries(EXPENSE_CATEGORIES.map(c => [c.key, c]));
 
 const EMPTY_EXPENSE_FORM = {
   amount: '',
@@ -196,184 +56,6 @@ const EMPTY_EXPENSE_FORM = {
 const getApiError = (e, fallback) => {
   if (e.response?.status === 413) return 'Tổng dung lượng tệp vượt giới hạn của máy chủ.';
   return typeof e.response?.data === 'string' && e.response.data ? e.response.data : fallback;
-};
-
-// Lọc các file hợp lệ trong danh sách vừa chọn; trả về file nhận được + thông báo lỗi (nếu có)
-const validateMediaFiles = (current, incoming) => {
-  const accepted = [];
-  let error = '';
-  let total = current.reduce((sum, f) => sum + f.size, 0);
-  for (const f of incoming) {
-    const isImage = f.type.startsWith('image/');
-    const isVideo = f.type.startsWith('video/');
-    if (!isImage && !isVideo) { error = `"${f.name}" không phải ảnh hoặc video.`; continue; }
-    if (current.length + accepted.length >= MAX_MEDIA_FILES) { error = `Tối đa ${MAX_MEDIA_FILES} tệp cho mỗi đánh giá.`; break; }
-    const limitMB = isVideo ? MAX_VIDEO_MB : MAX_IMAGE_MB;
-    if (f.size > limitMB * 1024 * 1024) { error = `"${f.name}" vượt quá ${limitMB}MB.`; continue; }
-    if (total + f.size > MAX_TOTAL_MB * 1024 * 1024) { error = `Tổng dung lượng tối đa ${MAX_TOTAL_MB}MB.`; continue; }
-    accepted.push(f);
-    total += f.size;
-  }
-  return { accepted, error };
-};
-
-// Ô chọn ảnh/video (dùng ở cả dialog "Đã đi" và form viết đánh giá trong panel)
-const MediaPicker = ({ files, onChange, disabled }) => {
-  const inputRef = useRef(null);
-  const [error, setError] = useState('');
-  const [previews, setPreviews] = useState([]);
-
-  // Tạo URL xem trước trong effect (không dùng useMemo) để không bị thu hồi nhầm khi StrictMode chạy effect 2 lần
-  useEffect(() => {
-    const next = files.map(f => ({ file: f, url: URL.createObjectURL(f), isVideo: f.type.startsWith('video/') }));
-    setPreviews(next);
-    return () => next.forEach(p => URL.revokeObjectURL(p.url));
-  }, [files]);
-
-  const handleSelect = (e) => {
-    const result = validateMediaFiles(files, Array.from(e.target.files || []));
-    setError(result.error);
-    if (result.accepted.length > 0) onChange([...files, ...result.accepted]);
-    e.target.value = ''; // cho phép chọn lại đúng file vừa xoá
-  };
-
-  return (
-    <div>
-      <div className="flex flex-wrap gap-2">
-        {previews.map((p) => (
-          <div key={p.url} className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
-            {p.isVideo
-              ? <video src={p.url} muted preload="metadata" className="w-full h-full object-cover" />
-              : <img src={p.url} alt="" className="w-full h-full object-cover" />}
-            {p.isVideo && (
-              <div className="absolute inset-0 bg-black/30 flex items-center justify-center pointer-events-none">
-                <Play className="w-5 h-5 text-white fill-white" />
-              </div>
-            )}
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => onChange(files.filter(f => f !== p.file))}
-              aria-label="Xoá tệp"
-              className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-50"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        ))}
-        {files.length < MAX_MEDIA_FILES && (
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => inputRef.current?.click()}
-            className="w-20 h-20 rounded-xl border border-dashed border-slate-300 bg-white text-slate-400 hover:text-slate-600 hover:border-slate-400 flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50"
-          >
-            <Plus className="w-5 h-5" />
-            <span className="text-[10px] font-semibold">Ảnh/Video</span>
-          </button>
-        )}
-      </div>
-      <input ref={inputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleSelect} />
-      <p className="text-[11px] text-slate-400 mt-2">Tối đa {MAX_MEDIA_FILES} tệp · ảnh ≤ {MAX_IMAGE_MB}MB · video ≤ {MAX_VIDEO_MB}MB</p>
-      {error && <p className="text-xs text-rose-600 font-medium mt-1">{error}</p>}
-    </div>
-  );
-};
-
-// Lưới ảnh/video dưới mỗi đánh giá trong tab Đánh giá.
-// Bấm vào ảnh sẽ mở trình xem ảnh (lightbox) ngay trong app; video phát trực tiếp trong lưới.
-const ReviewMediaGrid = ({ media }) => {
-  const [viewerIndex, setViewerIndex] = useState(null);
-  const images = useMemo(() => (media || []).filter(m => m.type !== 'VIDEO'), [media]);
-  const isOpen = viewerIndex !== null;
-
-  const closeViewer = () => setViewerIndex(null);
-  const step = (delta) => setViewerIndex(i => (i + delta + images.length) % images.length);
-
-  // Phím tắt: Esc để đóng, ← → để chuyển ảnh
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e) => {
-      if (e.key === 'Escape') setViewerIndex(null);
-      else if (e.key === 'ArrowLeft' && images.length > 1) step(-1);
-      else if (e.key === 'ArrowRight' && images.length > 1) step(1);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, images.length]);
-
-  if (!media || media.length === 0) return null;
-  const current = isOpen ? images[viewerIndex] : null;
-
-  return (
-    <>
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        {media.map((m, i) => (
-          m.type === 'VIDEO' ? (
-            <video key={`${i}-${m.url}`} src={m.url} controls preload="metadata" className="w-full aspect-square object-cover rounded-xl bg-black" />
-          ) : (
-            <button
-              key={`${i}-${m.url}`}
-              type="button"
-              onClick={() => setViewerIndex(images.indexOf(m))}
-              className="block aspect-square rounded-xl overflow-hidden bg-slate-100 cursor-zoom-in"
-            >
-              <img src={m.url} alt="Ảnh đánh giá" loading="lazy" className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
-            </button>
-          )
-        ))}
-      </div>
-
-      {/* Dùng portal vì panel cha có transform, nếu không thì "fixed" sẽ chỉ phủ trong panel thay vì cả màn hình */}
-      {current && createPortal(
-        <div
-          className="fixed inset-0 z-[4000] bg-black/90 flex items-center justify-center p-4"
-          onClick={closeViewer}
-        >
-          <button
-            onClick={closeViewer}
-            aria-label="Đóng"
-            className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-
-          {images.length > 1 && (
-            <button
-              onClick={(e) => { e.stopPropagation(); step(-1); }}
-              aria-label="Ảnh trước"
-              className="absolute left-4 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
-            >
-              <ChevronLeft className="w-6 h-6" />
-            </button>
-          )}
-
-          <img
-            src={current.url}
-            alt="Ảnh đánh giá"
-            onClick={(e) => e.stopPropagation()}
-            className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
-          />
-
-          {images.length > 1 && (
-            <>
-              <button
-                onClick={(e) => { e.stopPropagation(); step(1); }}
-                aria-label="Ảnh sau"
-                className="absolute right-4 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
-              >
-                <ChevronRight className="w-6 h-6" />
-              </button>
-              <div className="absolute bottom-5 left-1/2 -translate-x-1/2 text-white/80 text-sm font-semibold">
-                {viewerIndex + 1} / {images.length}
-              </div>
-            </>
-          )}
-        </div>,
-        document.body
-      )}
-    </>
-  );
 };
 
 // ================= TUYẾN ĐƯỜNG (OSRM) =================
@@ -404,18 +86,6 @@ const haversineMeters = (a, b) => {
   const dLng = toRad(b.lng - a.lng);
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
   return 2 * 6371000 * Math.asin(Math.sqrt(h));
-};
-
-const formatDistance = (m) => (m >= 1000
-  ? `${(m / 1000).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} km`
-  : `${Math.round(m)} m`);
-
-const formatDuration = (s) => {
-  const minutes = Math.max(1, Math.round(s / 60));
-  if (minutes < 60) return `${minutes} phút`;
-  const h = Math.floor(minutes / 60);
-  const mm = minutes % 60;
-  return mm ? `${h} giờ ${mm} phút` : `${h} giờ`;
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -498,22 +168,6 @@ const buildDayRoute = async (stops, signal) => {
   return { segments, legs };
 };
 // ================= HẾT TUYẾN ĐƯỜNG (OSRM) =================
-
-// Chip "12,4 km · 25 phút" hiện dưới mỗi địa điểm (tới điểm kế tiếp trong ngày)
-const LegChip = ({ leg }) => {
-  if (!leg) return null;
-  return (
-    <div
-      className="flex items-center gap-1.5 mt-3 text-[12px] font-semibold text-slate-400"
-      title={leg.approx ? 'Không tìm được đường bộ, hiển thị khoảng cách đường thẳng' : 'Quãng đường và thời gian lái xe ước tính (chưa tính kẹt xe)'}
-    >
-      <Car className="w-3.5 h-3.5" />
-      {leg.approx
-        ? `≈ ${formatDistance(leg.distance)} · đường thẳng`
-        : `${formatDistance(leg.distance)} · ${formatDuration(leg.duration)}`}
-    </div>
-  );
-};
 
 // Nút trong thanh bên: mục đang xem có nền đỏ nhạt + vạch đỏ bên trái
 const SidebarNavButton = ({ icon: Icon, label, active, onClick }) => (
@@ -1741,10 +1395,17 @@ const TripDetail = () => {
   if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500">Đang tải hành trình...</div>;
   if (!trip) return null;
 
-  // HÀM AN TOÀN TRÁNH CRASH: Lấy chữ cái đầu của Tên
-  const getInitial = (name) => {
-    if (!name || typeof name !== 'string') return 'U';
-    return name.charAt(0).toUpperCase();
+  // Props dùng chung cho mọi ngày trong phần Lịch trình (ItineraryDay)
+  const itineraryDayProps = {
+    tripDays: trip.tripDays,
+    getDayDropProps, dropDayId, focusedDayId, droppingDayId, dayHasStops, openDayDirections,
+    draggingDestId, reorderTarget, activeDestination, getDestRowDragProps, showHover, hideHover,
+    selectDestination, canEdit, destMenuId, setDestMenuId, savingOrder, moveDestination,
+    deletingDestId, handleDeleteDestination, handleUpdateDestProperty, handleToggleVisited,
+    openTimePicker, activeTimePickerDestId, setActiveTimePickerDestId, timeDraft, setTimeDraft,
+    pickTimeSlot, saveTime, expenseStats, openExpenseDialog, routeData, addingDayId, searchRef,
+    searchNotice, searchQuery, setSearchQuery, setAddingDayId, setSearchNotice, visibleSuggestions,
+    handleAddDestination
   };
 
   return (
@@ -1999,334 +1660,7 @@ const TripDetail = () => {
                 <h2 className="text-3xl font-extrabold text-slate-900 mb-8">Lịch trình</h2>
                 <div className="space-y-8">
                   {trip.tripDays?.map((day) => (
-                    <div key={day.id} data-day-id={day.id} ref={el => dayRefs.current[day.id] = el} {...getDayDropProps(day)} className={`bg-white border rounded-3xl p-6 shadow-sm transition-all ${dropDayId === day.id ? 'border-indigo-400 ring-4 ring-indigo-100 bg-indigo-50/30' : focusedDayId === day.id ? 'border-[#FF5645] ring-4 ring-[#FF5645]/10' : 'border-slate-200'}`}>
-                      <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-3 mb-6"><span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Ngày {day.dayNumber}</span><span className="text-slate-500">{formatFullDate(day.dayDate)}</span>
-                        {dropDayId === day.id && <span className="ml-auto text-xs font-bold text-indigo-600">Thả để thêm vào Ngày {day.dayNumber}</span>}
-                        {droppingDayId === day.id && <span className="ml-auto text-xs font-bold text-slate-500">Đang thêm địa điểm…</span>}
-                        {dropDayId !== day.id && droppingDayId !== day.id && dayHasStops(day.id) && (
-                          <button
-                            type="button"
-                            onClick={() => openDayDirections(day.id)}
-                            title="Mở chỉ đường cho cả ngày trên Google Maps"
-                            className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold normal-case text-slate-600 transition hover:border-[#FF5645] hover:text-[#FF5645]"
-                          >
-                            <Navigation className="h-3.5 w-3.5" /> Chỉ đường
-                          </button>
-                        )}
-                      </h3>
-                      
-                      <div className="space-y-4 mb-4">
-                        {(!day.destinations || day.destinations.length === 0) ? (
-                          <div className={`text-center py-6 border-2 border-dashed rounded-2xl ${draggingDestId != null && reorderTarget?.dayId === day.id ? 'border-[#FF5645] bg-red-50/40' : 'border-slate-100'}`}>
-                            <CheckSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                            <p className="text-sm text-slate-400 font-medium">Bạn chưa thêm địa điểm nào.</p>
-                          </div>
-                        ) : (
-                          day.destinations.map((dest, idx) => {
-                            const isActive = activeDestination?.id === dest.id;
-                            const isVisited = dest.isVisited || false; 
-
-                            const showDropLineBefore = draggingDestId != null && reorderTarget?.dayId === day.id && reorderTarget.index === idx;
-                            return (
-                              <Fragment key={dest.id}>
-                              {showDropLineBefore && <div className="ml-10 h-1 rounded-full bg-[#FF5645]" />}
-                              <div 
-                                {...getDestRowDragProps(day, dest, idx)}
-                                onMouseEnter={() => showHover(dest.id, 'list', 120)}
-                                onMouseLeave={() => hideHover(dest.id, { delayMs: 450 })}
-                                onClick={(e) => {
-                                  if (e.target.closest('button') || e.target.closest('input')) return;
-                                  selectDestination(dest, idx);
-                                }} 
-                                title={canEdit ? 'Kéo để sắp xếp lại hoặc chuyển sang ngày khác' : undefined}
-                                className={`flex gap-3 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-all ${draggingDestId === dest.id ? 'opacity-40' : ''} ${isActive ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-50'}`}
-                              >
-                                <div className="flex flex-col items-center mt-2 w-8 shrink-0">
-                                  {isVisited ? (
-                                    <div className="w-7 h-7 rounded-full bg-slate-400 text-white flex items-center justify-center shadow-sm">
-                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                    </div>
-                                  ) : (
-                                    <div className={`w-7 h-7 rounded-full text-white text-xs font-extrabold flex items-center justify-center shadow-sm transition-all ${isActive ? 'bg-cyan-500 scale-110' : 'bg-cyan-500/80 group-hover:bg-cyan-500'}`}>
-                                      {idx + 1}
-                                    </div>
-                                  )}
-                                  
-                                  {idx !== day.destinations.length - 1 && (
-                                    <div className="w-[1.5px] h-full bg-slate-200 border-l border-dashed border-slate-300 mt-2 min-h-[30px]"></div>
-                                  )}
-                                </div>
-
-                                <div className={`flex-1 p-3 rounded-2xl transition-all ${isActive ? 'bg-slate-50/80' : 'bg-transparent'}`}>
-                                  
-                                  <div className="flex items-center justify-between mb-1">
-                                    <h4 className={`font-bold text-[15px] transition-colors ${isActive ? 'text-slate-900' : (isVisited ? 'text-slate-600' : 'text-slate-800')}`}>
-                                      {dest.placeName}
-                                    </h4>
-                                    {canEdit && (
-                                    <div className="relative shrink-0">
-                                      <button
-                                        type="button"
-                                        aria-label={`Tùy chọn cho ${dest.placeName}`}
-                                        aria-haspopup="menu"
-                                        aria-expanded={destMenuId === dest.id}
-                                        onClick={(e) => { e.stopPropagation(); setDestMenuId(id => (id === dest.id ? null : dest.id)); }}
-                                        className={`rounded-md p-1 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 focus:opacity-100 ${isActive || destMenuId === dest.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                                      >
-                                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM20 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"></path></svg>
-                                      </button>
-                                      {destMenuId === dest.id && (
-                                        <>
-                                          <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setDestMenuId(null); }} />
-                                          <div role="menu" className="absolute right-0 top-full mt-1 z-50 w-56 rounded-xl border border-slate-100 bg-white p-1 shadow-xl" onClick={(e) => e.stopPropagation()}>
-                                            {/* Sắp xếp không cần kéo thả (dùng được trên điện thoại) */}
-                                            <button type="button" role="menuitem" disabled={idx === 0 || savingOrder}
-                                              onClick={() => { setDestMenuId(null); moveDestination(dest.id, day.id, idx - 1); }}
-                                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40">
-                                              <ArrowUp className="w-4 h-4" /> Di chuyển lên
-                                            </button>
-                                            <button type="button" role="menuitem" disabled={idx === day.destinations.length - 1 || savingOrder}
-                                              onClick={() => { setDestMenuId(null); moveDestination(dest.id, day.id, idx + 2); }}
-                                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40">
-                                              <ArrowDown className="w-4 h-4" /> Di chuyển xuống
-                                            </button>
-                                            {(trip.tripDays || []).filter(d => d.id !== day.id).map(other => (
-                                              <button key={other.id} type="button" role="menuitem" disabled={savingOrder}
-                                                onClick={() => { setDestMenuId(null); moveDestination(dest.id, other.id, (other.destinations || []).length); }}
-                                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40">
-                                                <CornerDownRight className="w-4 h-4" /> Chuyển sang Ngày {other.dayNumber}
-                                              </button>
-                                            ))}
-                                            <div className="my-1 border-t border-slate-100" />
-                                            <button
-                                              type="button"
-                                              role="menuitem"
-                                              disabled={deletingDestId === dest.id}
-                                              onClick={() => handleDeleteDestination(day, dest)}
-                                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-50"
-                                            >
-                                              <Trash2 className="w-4 h-4" />
-                                              {deletingDestId === dest.id ? 'Đang xóa…' : 'Xóa khỏi lịch trình'}
-                                            </button>
-                                          </div>
-                                        </>
-                                      )}
-                                    </div>
-                                    )}
-                                  </div>
-
-                                  {isActive ? (
-                                    <input 
-                                      type="text" 
-                                      defaultValue={dest.note || ''} 
-                                      readOnly={!canEdit}
-                                      onBlur={(e) => { if (canEdit) handleUpdateDestProperty(day.id, dest.id, 'note', e.target.value); }}
-                                      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                                      placeholder={canEdit ? 'Thêm ghi chú...' : 'Chưa có ghi chú'} 
-                                      className="w-full bg-transparent text-sm text-slate-700 outline-none mb-3 placeholder:text-slate-400 border-b border-transparent focus:border-slate-300 pb-1"
-                                    />
-                                  ) : (
-                                    dest.note && <p className="text-[13px] text-slate-600 mb-2 line-clamp-2">{dest.note}</p>
-                                  )}
-
-                                  {isActive && canEdit && (
-                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 pt-2 border-t border-slate-200 relative">
-                                      
-                                      <button 
-                                        onClick={() => handleToggleVisited(day, dest, isVisited)}
-                                        className={`flex items-center gap-1.5 text-[13px] font-bold transition-colors ${isVisited ? 'text-slate-400 hover:text-slate-600' : 'text-indigo-600 hover:text-indigo-800'}`}
-                                      >
-                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                        {isVisited ? 'Bỏ đánh dấu' : 'Đã đi'}
-                                      </button>
-
-                                      <div className="relative">
-                                        {dest.timeRange ? (
-                                          <button 
-                                            onClick={() => openTimePicker(dest)}
-                                            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md text-[12px] font-bold text-indigo-700 transition-colors"
-                                          >
-                                            {dest.timeRange}
-                                          </button>
-                                        ) : (
-                                          <button 
-                                            onClick={() => openTimePicker(dest)}
-                                            className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 hover:text-slate-800 transition-colors"
-                                          >
-                                            <Clock className="w-3.5 h-3.5" /> Thêm giờ
-                                          </button>
-                                        )}
-
-                                        {activeTimePickerDestId === dest.id && (
-                                          <>
-                                            <div
-                                              className="fixed inset-0 z-40"
-                                              onClick={(e) => { e.stopPropagation(); setActiveTimePickerDestId(null); }}
-                                            />
-                                            <div
-                                              className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border border-slate-100 z-50 p-3 flex flex-col gap-3 animate-fade-in"
-                                              onClick={(e) => e.stopPropagation()}
-                                            >
-                                              <div className="flex items-center gap-2">
-                                                <div className={`flex-1 bg-slate-50 rounded-lg p-2 border transition-colors ${timeDraft.focus === 'start' ? 'border-indigo-400' : 'border-slate-100'}`}>
-                                                  <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Giờ bắt đầu</span>
-                                                  <input
-                                                    type="time"
-                                                    value={timeDraft.start}
-                                                    onFocus={() => setTimeDraft(d => ({ ...d, focus: 'start' }))}
-                                                    onChange={(e) => setTimeDraft(d => ({ ...d, start: e.target.value }))}
-                                                    className="w-full bg-transparent outline-none text-sm font-bold text-slate-700"
-                                                  />
-                                                </div>
-                                                <span className="text-slate-300 font-medium">—</span>
-                                                <div className={`flex-1 bg-slate-50 rounded-lg p-2 border transition-colors ${timeDraft.focus === 'end' ? 'border-indigo-400' : 'border-slate-100'}`}>
-                                                  <span className="text-[10px] font-bold text-slate-400 block mb-0.5">Giờ kết thúc</span>
-                                                  <input
-                                                    type="time"
-                                                    value={timeDraft.end}
-                                                    onFocus={() => setTimeDraft(d => ({ ...d, focus: 'end' }))}
-                                                    onChange={(e) => setTimeDraft(d => ({ ...d, end: e.target.value }))}
-                                                    className="w-full bg-transparent outline-none text-sm font-bold text-slate-700"
-                                                  />
-                                                </div>
-                                              </div>
-
-                                              <div
-                                                className="h-32 overflow-y-auto border border-slate-100 rounded-lg py-1 custom-scrollbar"
-                                                ref={(el) => {
-                                                  if (el && !el.dataset.ready) {
-                                                    el.dataset.ready = '1';
-                                                    const idx = TIME_OPTIONS.indexOf(timeDraft[timeDraft.focus]);
-                                                    el.scrollTop = (idx >= 0 ? idx : 16) * 32; 
-                                                  }
-                                                }}
-                                              >
-                                                {TIME_OPTIONS.map(t => {
-                                                  const selected = t === timeDraft[timeDraft.focus];
-                                                  const disabled = timeDraft.focus === 'end' && !!timeDraft.start && t <= timeDraft.start;
-                                                  return (
-                                                    <div
-                                                      key={t}
-                                                      onClick={() => { if (!disabled) pickTimeSlot(t); }}
-                                                      className={`h-8 px-3 flex items-center text-sm ${
-                                                        disabled ? 'text-slate-300 cursor-not-allowed'
-                                                        : selected ? 'bg-indigo-50 text-indigo-700 font-bold cursor-pointer'
-                                                        : 'text-slate-700 hover:bg-slate-50 cursor-pointer'
-                                                      }`}
-                                                    >
-                                                      {t}
-                                                    </div>
-                                                  );
-                                                })}
-                                              </div>
-
-                                              <div className="flex items-center justify-center gap-3 pt-1">
-                                                <button
-                                                  onClick={() => {
-                                                    handleUpdateDestProperty(day.id, dest.id, 'time', null);
-                                                    setActiveTimePickerDestId(null);
-                                                  }}
-                                                  className="px-5 py-2 bg-slate-100 text-slate-600 font-bold text-sm rounded-full hover:bg-slate-200 transition-colors"
-                                                >
-                                                  Xóa
-                                                </button>
-                                                <button
-                                                  onClick={() => saveTime(day.id, dest.id)}
-                                                  className="px-5 py-2 bg-[#FF5645] text-white font-bold text-sm rounded-full hover:bg-[#E04B3B] transition-colors"
-                                                >
-                                                  Lưu
-                                                </button>
-                                              </div>
-                                            </div>
-                                          </>
-                                        )}
-                                      </div>
-
-                                      {(expenseStats.byDest[dest.id] || 0) > 0 ? (
-                                        <button 
-                                          onClick={() => openExpenseDialog({ destinationId: dest.id })}
-                                          className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md text-[12px] font-bold text-indigo-700 transition-colors cursor-pointer"
-                                        >
-                                          {formatVND(expenseStats.byDest[dest.id])}
-                                        </button>
-                                      ) : (
-                                        <button 
-                                          onClick={() => openExpenseDialog({ destinationId: dest.id })} 
-                                          className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 hover:text-slate-800 transition-colors"
-                                        >
-                                          <span className="font-bold text-sm bg-slate-200 w-4 h-4 rounded-full flex items-center justify-center text-[10px]">$</span> Thêm chi phí
-                                        </button>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {(!isActive || !canEdit) && (dest.timeRange || (expenseStats.byDest[dest.id] || 0) > 0) && (
-                                    <div className="flex flex-wrap gap-2 mt-2">
-                                      {dest.timeRange && dest.timeRange.trim() !== '' && <span className="bg-indigo-50 px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700">{dest.timeRange}</span>}
-                                      {(expenseStats.byDest[dest.id] || 0) > 0 && <span className="bg-indigo-50 px-2 py-1 rounded-md text-[11px] font-bold text-indigo-700">{formatVND(expenseStats.byDest[dest.id])}</span>}
-                                    </div>
-                                  )}
-
-                                  <LegChip leg={routeData[day.id]?.legByFrom?.[dest.id]} />
-
-                                </div>
-                              </div>
-                              </Fragment>
-                            )
-                          })
-                        )}
-                        {draggingDestId != null && reorderTarget?.dayId === day.id
-                          && reorderTarget.index === (day.destinations || []).length
-                          && (day.destinations || []).length > 0 && (
-                          <div className="ml-10 h-1 rounded-full bg-[#FF5645]" />
-                        )}
-                      </div>
-
-                      {addingDayId === day.id ? (
-                        <div ref={searchRef} className="relative mt-4 pl-12">
-                          {searchNotice?.dayId === day.id && (
-                            <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-5 text-amber-800">
-                              <p className="font-bold">“{searchNotice.name}” là gợi ý tham khảo của AI</p>
-                              <p className="mt-0.5">
-                                Địa điểm chưa được xác nhận nên vị trí cụ thể chưa có trên bản đồ của chúng tôi;
-                                tên và khu vực chỉ dựa trên thông tin từ Internet. Hãy kiểm tra kết quả tìm kiếm bên dưới,
-                                nếu đúng địa điểm bạn muốn thì chọn để tự thêm vào ngày này.
-                              </p>
-                            </div>
-                          )}
-                          <div className="flex items-center border border-[#FF5645] rounded-xl px-4 py-3 bg-white shadow-sm ring-4 ring-[#FF5645]/10">
-                            <Search className="w-5 h-5 text-[#FF5645] mr-3" />
-                            <input type="text" autoFocus placeholder="Tìm quán ăn, khách sạn..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-1 outline-none text-base bg-transparent font-medium" />
-                            <button onClick={() => { setAddingDayId(null); setSearchQuery(''); setSearchNotice(null); }} className="p-1 hover:bg-slate-100 rounded-full"><X className="w-5 h-5 text-slate-400" /></button>
-                          </div>
-                          
-                          {visibleSuggestions.length > 0 && (
-                            <div className="absolute top-full left-12 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden">
-                              {visibleSuggestions.map((place, idx) => (
-                                <div key={place.key || idx} onClick={() => handleAddDestination(place, day.id)} className="px-5 py-4 hover:bg-orange-50 cursor-pointer border-b border-slate-50 last:border-0 flex items-start gap-3">
-                                  <MapPin className={`w-5 h-5 mt-0.5 flex-shrink-0 ${place.source === 'db' ? 'text-emerald-600' : 'text-[#FF5645]'}`} />
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-base font-bold text-slate-800 flex items-center gap-2 flex-wrap">
-                                      {place.name}
-                                      {place.source === 'db' && (
-                                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${place.verified ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                          {place.verified ? 'Đối tác đã xác minh' : 'Có trong hệ thống'}
-                                        </span>
-                                      )}
-                                    </p>
-                                    <p className="text-sm text-slate-500 truncate max-w-[420px]">{place.address}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        canEdit && <div className="pl-12 mt-2">
-                          <button onClick={() => setAddingDayId(day.id)} className="w-full py-3 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 text-sm font-bold hover:border-[#FF5645] hover:text-[#FF5645] hover:bg-orange-50/50 transition-colors flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> Thêm địa điểm vào Ngày {day.dayNumber}</button>
-                        </div>
-                      )}
-                    </div>
+                    <ItineraryDay key={day.id} day={day} dayRef={el => dayRefs.current[day.id] = el} {...itineraryDayProps} />
                   ))}
                 </div>
               </div>
@@ -2476,734 +1810,93 @@ const TripDetail = () => {
             <span className="h-20 w-1 rounded-full bg-slate-300 group-hover:bg-[#FF5645] group-active:bg-[#FF5645] transition-colors shadow-sm" />
           </div>
         {/* PANEL TRƯỢT (NỔI TRÊN BẢN ĐỒ) */}
-        <div className={`absolute top-4 left-4 bottom-4 w-[400px] bg-white rounded-3xl shadow-2xl z-[1000] border border-slate-100 flex flex-col overflow-hidden transition-transform duration-500 ease-in-out ${activeDestination && isPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[120%] opacity-0 pointer-events-none'}`}>
-          {activeDestination && (
-            <>
-              {/* Ảnh bìa Panel (Lấy động từ Tab Bài đăng) */}
-              <div className="relative h-56 bg-slate-800 flex-shrink-0">
-                                    <img 
-                      src={coverImage || `https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=800&auto=format&fit=crop`} 
-                      alt="Ảnh bìa" 
-                      className="w-full h-full object-cover opacity-90 transition-opacity" 
-                      onError={(e) => {
-                        // Nếu ảnh hỏng hoặc lỗi mạng, tự động fallback về ảnh mặc định an toàn
-                        e.target.src = 'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?q=80&w=800&auto=format&fit=crop';
-                      }}
-                    />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
-                <button onClick={() => setIsPanelOpen(false)} className="absolute top-4 right-4 h-8 w-8 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/40 backdrop-blur transition-colors"><X className="w-4 h-4" /></button>
-                <div className="absolute bottom-4 left-5 right-5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="bg-[#FF5645] text-white text-xs font-bold px-2.5 py-0.5 rounded-full shadow-sm">{activeDestination.index}</span>
-                  </div>
-                  <h3 className="text-2xl font-extrabold text-white text-shadow-md leading-tight">{activeDestination.placeName}</h3>
-                </div>
-              </div>
+        <PlaceInfoPanel
+          activeDestination={activeDestination}
+          isPanelOpen={isPanelOpen}
+          coverImage={coverImage}
+          setIsPanelOpen={setIsPanelOpen}
+          setInfoTab={setInfoTab}
+          infoTab={infoTab}
+          placeReviews={placeReviews}
+          placePosts={placePosts}
+          placeInfo={placeInfo}
+          reviewStats={reviewStats}
+          showReviewForm={showReviewForm}
+          setShowReviewForm={setShowReviewForm}
+          setNewReviewRating={setNewReviewRating}
+          newReviewRating={newReviewRating}
+          newReviewText={newReviewText}
+          setNewReviewText={setNewReviewText}
+          newReviewFiles={newReviewFiles}
+          setNewReviewFiles={setNewReviewFiles}
+          isSubmittingReview={isSubmittingReview}
+          submitReview={submitReview}
+          uploadLabel={uploadLabel}
+          visibleReviewsCount={visibleReviewsCount}
+          toggleLikeReview={toggleLikeReview}
+          setVisibleReviewsCount={setVisibleReviewsCount}
+        />
 
-              {/* Tabs Menu */}
-              <div className="flex border-b border-slate-100 flex-shrink-0 bg-white">
-                <button onClick={() => setInfoTab('intro')} className={`flex-1 py-3.5 text-sm font-bold border-b-2 transition-colors ${infoTab === 'intro' ? 'border-[#FF5645] text-[#FF5645]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>Giới thiệu</button>
-                <button onClick={() => setInfoTab('reviews')} className={`flex-1 py-3.5 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-1.5 ${infoTab === 'reviews' ? 'border-[#FF5645] text-[#FF5645]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
-                  Đánh giá <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md text-[10px]">{placeReviews.length}</span>
-                </button>
-                <button onClick={() => setInfoTab('posts')} className={`flex-1 py-3.5 text-sm font-bold border-b-2 transition-colors flex items-center justify-center gap-1.5 ${infoTab === 'posts' ? 'border-[#FF5645] text-[#FF5645]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
-                  Bài đăng <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md text-[10px]">{placePosts.length}</span>
-                </button>
-              </div>
-
-              {/* Nội dung Tabs */}
-              <div className="flex-1 overflow-y-auto p-5 scroll-smooth bg-slate-50">
-                
-                {/* --- 1. GIỚI THIỆU TỪ WIKIPEDIA --- */}
-                {infoTab === 'intro' && (
-                  <div className="space-y-4">
-                    {placeInfo.loading ? (
-                      <div className="animate-pulse space-y-3"><div className="h-4 bg-slate-200 rounded w-3/4"></div><div className="h-4 bg-slate-200 rounded w-full"></div></div>
-                    ) : (
-                      <p className="text-slate-600 text-[15px] leading-relaxed font-medium">{placeInfo.extract}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* --- 2. ĐÁNH GIÁ (RATING & REVIEWS) --- */}
-                {infoTab === 'reviews' && (
-                  <div className="space-y-6">
-                    
-                    {/* KHU VỰC 1: TÓM TẮT ĐÁNH GIÁ (Google Maps Style) */}
-                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                      <h4 className="font-bold text-slate-900 mb-4 flex items-center justify-between">
-                        Tóm tắt bài đánh giá
-                        <div className="h-5 w-5 rounded-full border border-slate-300 text-slate-400 flex items-center justify-center text-[10px]">?</div>
-                      </h4>
-                      
-                      <div className="flex gap-6 items-center mb-6">
-                        {/* Cột trái: Thanh tiến trình */}
-                        <div className="flex-1 space-y-1.5">
-                          {[5, 4, 3, 2, 1].map(star => {
-                            const count = reviewStats.distribution[star];
-                            const percent = reviewStats.total > 0 ? (count / reviewStats.total) * 100 : 0;
-                            return (
-                              <div key={star} className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                                <span className="w-2">{star}</span>
-                                <div className="h-2 flex-1 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-amber-400 rounded-full" style={{ width: `${percent}%` }}></div>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                        
-                        {/* Cột phải: Điểm số trung bình */}
-                        <div className="flex flex-col items-center justify-center w-24">
-                          <span className="text-4xl font-normal text-slate-900">{reviewStats.avg.toString().replace('.', ',')}</span>
-                          <div className="flex gap-0.5 my-1">
-                            {[1, 2, 3, 4, 5].map(s => (
-                              <Star key={s} className={`w-3 h-3 ${s <= Math.round(reviewStats.avg) ? 'fill-amber-400 text-amber-400' : 'fill-slate-100 text-slate-200'}`} />
-                            ))}
-                          </div>
-                          <span className="text-xs font-medium text-sky-700">{reviewStats.total} bài viết</span>
-                        </div>
-                      </div>
-
-                      {/* Nút bật Form viết đánh giá */}
-                      {!showReviewForm && (
-                        <div className="flex justify-center border-t border-slate-50 pt-4">
-                          <button 
-                            onClick={() => setShowReviewForm(true)}
-                            className="bg-cyan-50 text-cyan-700 font-medium text-sm px-6 py-2 rounded-full flex items-center gap-2 hover:bg-cyan-100 transition-colors"
-                          >
-                            <MessageSquare className="w-4 h-4" /> Viết bài đánh giá
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* KHU VỰC 2: FORM ĐÁNH GIÁ (Ẩn/Hiện) */}
-                    {showReviewForm && (
-                      <div className="bg-white p-4 rounded-2xl border border-cyan-100 shadow-sm relative animate-fade-in">
-                        <button onClick={() => setShowReviewForm(false)} className="absolute top-2 right-2 p-1 text-slate-400 hover:bg-slate-100 rounded-full"><X className="w-4 h-4"/></button>
-                        <h4 className="text-sm font-bold text-slate-800 mb-2 text-center">Trải nghiệm của bạn?</h4>
-                        <div className="flex gap-1.5 mb-3 justify-center">
-                          {[1, 2, 3, 4, 5].map((star) => (
-                            <Star key={star} onClick={() => setNewReviewRating(star)} className={`w-8 h-8 cursor-pointer transition-colors ${star <= newReviewRating ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}`} />
-                          ))}
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <textarea 
-                            value={newReviewText} 
-                            onChange={(e) => setNewReviewText(e.target.value)} 
-                            placeholder="Chia sẻ thêm chi tiết (không bắt buộc)..." 
-                            className="w-full bg-slate-50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-cyan-500/20 border border-slate-200 transition-all resize-none h-20" 
-                          />
-                          <MediaPicker files={newReviewFiles} onChange={setNewReviewFiles} disabled={isSubmittingReview} />
-                          <div className="flex justify-end mt-1">
-                             <button onClick={submitReview} disabled={isSubmittingReview} className="bg-cyan-600 text-white font-bold text-sm px-5 py-2 rounded-full hover:bg-cyan-700 transition-colors disabled:opacity-50 flex items-center gap-2">
-                              {isSubmittingReview ? uploadLabel : <><Send className="w-4 h-4" /> Đăng</>}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* KHU VỰC 3: DANH SÁCH ĐÁNH GIÁ (Có Xem thêm) */}
-                    <div className="space-y-0">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-bold text-slate-900 text-lg">Tất cả các bài đánh giá</h4>
-                        <button className="h-8 w-8 rounded-full border border-slate-200 flex items-center justify-center text-cyan-600 hover:bg-slate-50">
-                          <Search className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {placeReviews.length === 0 ? (
-                        <p className="text-center text-sm text-slate-500 py-6">Chưa có đánh giá nào.</p>
-                      ) : (
-                        <div className="space-y-4">
-                          {placeReviews.slice(0, visibleReviewsCount).map(review => (
-                            <div key={review.id} className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
-                              
-                              {/* Đã bọc thép hàm lấy chữ cái đầu */}
-                              <div className="flex items-start justify-between mb-2">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-full bg-cyan-100 text-cyan-700 text-sm font-bold flex items-center justify-center">
-                                    {review.authorAvatar ? <img src={review.authorAvatar} className="w-full h-full rounded-full object-cover"/> : getInitial(review.authorName)}
-                                  </div>
-                                  <div>
-                                    <span className="text-sm font-bold text-slate-900 block leading-none mb-1">{review.authorName}</span>
-                                    <span className="text-[11px] text-slate-500 flex items-center gap-1">Hướng dẫn viên địa phương • 1 bài đánh giá</span>
-                                  </div>
-                                </div>
-                                <button className="text-slate-400 hover:bg-slate-100 p-1 rounded-full"><MoreHorizontal className="w-4 h-4" /></button>
-                              </div>
-
-                              {/* Rating & Date */}
-                              <div className="flex items-center gap-2 mb-2">
-                                <div className="flex gap-0.5">
-                                  {[1,2,3,4,5].map(s => <Star key={s} className={`w-3.5 h-3.5 ${s <= review.rating ? 'fill-amber-400 text-amber-400' : 'fill-slate-100 text-slate-200'}`} />)}
-                                </div>
-                                <span className="text-xs text-slate-500">{new Date(review.createdAt).toLocaleDateString('vi-VN')}</span>
-                              </div>
-
-                              {/* Content */}
-                              {review.content && <p className="text-[14px] text-slate-700 mb-4 leading-relaxed">{review.content}</p>}
-                              <ReviewMediaGrid media={review.media} />
-                              
-                              {/* Actions (Thích / Chia sẻ) */}
-                              <div className="flex items-center gap-6 pt-1">
-                                <button onClick={() => toggleLikeReview(review.id)} className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${review.likedByMe ? 'text-cyan-600' : 'text-slate-600 hover:text-slate-900'}`}>
-                                  <svg className={`w-4 h-4 ${review.likedByMe ? 'fill-cyan-600' : 'fill-none stroke-current'}`} viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
-                                  Thích {review.likesCount > 0 ? `(${review.likesCount})` : ''}
-                                </button>
-                                <button className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900">
-                                  <Share2 className="w-4 h-4" /> Chia sẻ
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-
-                          {/* Nút Xem thêm */}
-                          {visibleReviewsCount < placeReviews.length && (
-                            <button 
-                              onClick={() => setVisibleReviewsCount(prev => prev + 5)}
-                              className="w-full py-3 mt-2 rounded-full border border-slate-200 text-sm font-semibold text-cyan-700 hover:bg-slate-50 transition-colors"
-                            >
-                              Xem thêm bài đánh giá
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* --- 3. BÀI ĐĂNG TỪ MẠNG XÃ HỘI (Lấy từ /api/posts) --- */}
-                {infoTab === 'posts' && (
-                  <div>
-                    {placePosts.length === 0 ? (
-                      <div className="text-center py-8 text-slate-400">
-                        <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p className="text-sm font-medium">Chưa có bài check-in nào.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3">
-                        {placePosts.map(post => {
-                          if (!post.imageUrls || post.imageUrls.length === 0) return null;
-                          return (
-                            <div key={post.id} className="relative aspect-[4/5] rounded-2xl overflow-hidden group cursor-pointer shadow-sm border border-slate-200">
-                              <img src={post.imageUrls[0]} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="Ảnh check-in" />
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3 text-white">
-                                <span className="text-xs font-bold truncate drop-shadow-md">@{post.authorName}</span>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Chọn ngày hiển thị trên bản đồ (không cần cuộn danh sách) */}
-        {(trip.tripDays || []).length > 0 && !(activeDestination && isPanelOpen) && (
-          <div className="absolute left-3 top-3 z-[950] flex max-w-[calc(100%-150px)] items-center gap-1.5 overflow-x-auto rounded-2xl bg-white/95 p-1.5 shadow-lg ring-1 ring-black/5 backdrop-blur">
-            {[
-              { key: 'auto', label: 'Theo cuộn', title: 'Bản đồ đi theo ngày đang xem trong danh sách' },
-              { key: 'all', label: 'Cả chuyến', title: 'Hiện mọi ngày, mỗi ngày một màu' },
-            ].map(option => (
-              <button key={option.key} type="button" title={option.title} onClick={() => setMapDayMode(option.key)}
-                className={`shrink-0 rounded-xl px-2.5 py-1 text-xs font-bold transition ${mapDayMode === option.key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
-                {option.label}
-              </button>
-            ))}
-            {(trip.tripDays || []).map((day, i) => {
-              const color = DAY_COLORS[i % DAY_COLORS.length];
-              const selected = mapDayMode === day.id || (mapDayMode === 'auto' && mapDayId === day.id);
-              const empty = !dayHasStops(day.id);
-              return (
-                <button key={day.id} type="button" disabled={empty}
-                  title={empty ? `Ngày ${day.dayNumber} chưa có địa điểm trên bản đồ` : `Xem lộ trình Ngày ${day.dayNumber}`}
-                  onClick={() => { setMapDayMode(day.id); setActiveDestination(null); }}
-                  className={`flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${selected ? 'text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-                  style={selected ? { backgroundColor: color } : undefined}>
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: selected ? '#fff' : color }} />
-                  N{day.dayNumber}
-                </button>
-              );
-            })}
-            {savingOrder && <span className="shrink-0 px-1 text-[11px] font-semibold text-slate-400">Đang lưu…</span>}
-            <span className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
-            <button type="button" onClick={() => (directions ? setDirections(null) : openDirections())}
-              className={`flex shrink-0 items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-bold transition ${directions ? 'bg-[#FF5645] text-white' : 'text-[#FF5645] hover:bg-red-50'}`}>
-              <Navigation className="h-3.5 w-3.5" /> Chỉ đường
-            </button>
-          </div>
-        )}
-
-        {directions && !(activeDestination && isPanelOpen) && (
-          <DirectionsPanel
-            stops={directionStops}
-            value={directions}
-            onChange={setDirections}
-            onClose={() => setDirections(null)}
-          />
-        )}
-
-        {/* BẢN ĐỒ LEAFLET CHÍNH */}
-        <MapContainer center={[16.047079, 108.206230]} zoom={5} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-          {/* Nền Google giống trang Home (như TripDetail cũ); mạng chặn Google thì tự chuyển sang nền OSM */}
-          <ResilientTileLayer preset="google" />
-          <MapSizeObserver resizeKey={isSidebarOpen} />
-          <MapBackgroundClick onClick={() => hideHover(null, { force: true })} />
-          <MapBounds
-            points={mapStops.map(s => [s.lat, s.lng])}
-            boundsKey={boundsKey}
-            activePoint={(() => {
-              const a = activeDestination ? mapStops.find(s => s.id === activeDestination.id) : null;
-              return a ? [a.lat, a.lng] : null;
-            })()}
-            activeKey={activeDestination?.id ?? null}
-          />
-
-          {/* Đường đi thực tế (OSRM) theo từng ngày; đoạn không tìm được đường bộ vẽ nét đứt */}
-          {routeDays
-            .filter(d => !mapDayId || d.id === mapDayId)
-            .map(d => (routeData[d.id]?.segments || []).map((seg, i) => (
-              <Polyline
-                key={`${d.id}-${i}-${seg.approx ? 'approx' : 'road'}-${d.color}`}
-                positions={seg.positions}
-                color={d.color}
-                weight={4}
-                opacity={0.8}
-                dashArray={seg.approx ? '8 10' : undefined}
-              />
-            )))}
-
-          {/* Cắm cờ các điểm đến (số thứ tự khớp với danh sách trong từng ngày) */}
-          {mapStops.map((s) => (
-            <Marker
-              key={s.id}
-              position={[s.lat, s.lng]}
-              icon={getMarkerIcon(
-                s.number,
-                activeDestination?.id === s.id || (hover?.source !== 'map' && hover?.id === s.id),
-                s.color
-              )}
-              eventHandlers={{
-                click: () => selectDestination(s.dest, s.number - 1),
-                mouseover: () => showHover(s.id, 'map'),
-                mouseout: () => hideHover(s.id, { delayMs: 250 }),
-              }}
-            />
-          ))}
-
-          {/* Card ảnh + tên khi lia chuột vào địa điểm (từ danh sách hoặc marker) */}
-          {(() => {
-            // Không hiện card cho địa điểm đang mở sẵn trong panel chi tiết (panel đã có ảnh + tên).
-            const isShownInPanel = isPanelOpen && activeDestination?.id === hover?.id;
-            const hoveredStop = hover && !isShownInPanel ? mapStops.find(s => s.id === hover.id) : null;
-            return (
-              <MapHoverPreview
-                stop={hoveredStop || null}
-                coverUrl={hoveredStop ? destCovers[String(getDestPlaceId(hoveredStop.dest))] : null}
-                activity={hoveredStop ? placeActivity[String(hoveredStop.dest?.placeName || '').trim()] : null}
-                onCardEnter={keepHover}
-                onCardLeave={() => hideHover(hover?.id, { delayMs: 200 })}
-                onCardClick={(stop) => handleDestinationClick(stop.dest, stop.number - 1)}
-                onDirectionsFrom={(stop) => { hideHover(null, { force: true }); openDirections({ originId: stop.id }); }}
-                onDirectionsTo={(stop) => { hideHover(null, { force: true }); openDirections({ destinationId: stop.id }); }}
-              />
-            );
-          })()}
-        </MapContainer>
-        {unmappedDestinations.length > 0 && (
-          <div className="absolute left-4 right-4 bottom-4 z-[900] rounded-xl bg-white/95 border border-amber-200 shadow-lg px-3 py-2 text-xs text-amber-800">
-            <strong>{unmappedDestinations.length} địa điểm chưa xác định được tọa độ:</strong>{' '}
-            {unmappedDestinations.slice(0, 3).join(', ')}
-            {unmappedDestinations.length > 3 ? '…' : ''}
-          </div>
-        )}
+        <TripMap
+          tripDays={trip.tripDays}
+          activeDestination={activeDestination}
+          isPanelOpen={isPanelOpen}
+          setMapDayMode={setMapDayMode}
+          mapDayMode={mapDayMode}
+          mapDayId={mapDayId}
+          dayHasStops={dayHasStops}
+          setActiveDestination={setActiveDestination}
+          savingOrder={savingOrder}
+          directions={directions}
+          setDirections={setDirections}
+          openDirections={openDirections}
+          directionStops={directionStops}
+          isSidebarOpen={isSidebarOpen}
+          hideHover={hideHover}
+          mapStops={mapStops}
+          boundsKey={boundsKey}
+          routeDays={routeDays}
+          routeData={routeData}
+          hover={hover}
+          selectDestination={selectDestination}
+          showHover={showHover}
+          destCovers={destCovers}
+          placeActivity={placeActivity}
+          keepHover={keepHover}
+          handleDestinationClick={handleDestinationClick}
+          unmappedDestinations={unmappedDestinations}
+        />
       </div>
 
-      {/* ================= DIALOG THÊM CHI PHÍ ================= */}
-      {expenseDialog && (
-        <div
-          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
-          onClick={closeExpenseDialog}
-        >
-          <div
-            className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-6 sm:p-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {expenseDialog.step === 'item' && (
-              <button
-                onClick={() => setExpenseDialog({ step: 'form' })}
-                aria-label="Quay lại"
-                className="absolute top-4 left-4 h-8 w-8 rounded-full text-slate-600 flex items-center justify-center hover:bg-slate-100 transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-            )}
-            <button
-              onClick={closeExpenseDialog}
-              aria-label="Đóng"
-              className="absolute top-4 right-4 h-8 w-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            {expenseDialog.step === 'form' ? (
-              <>
-                <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Thêm chi phí</h3>
-
-                {/* Số tiền */}
-                <label className="flex items-center gap-3 border border-slate-300 rounded-xl px-4 py-3 mb-3 focus-within:border-slate-500 transition-colors">
-                  <span className="font-bold text-slate-700">₫</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    autoFocus
-                    value={expenseForm.amount}
-                    onChange={(e) => updateExpenseForm({ amount: e.target.value })}
-                    placeholder="0"
-                    className="w-full bg-transparent outline-none text-lg font-bold text-slate-800 placeholder:text-slate-300"
-                  />
-                </label>
-
-                {/* Chọn mục */}
-                <button
-                  type="button"
-                  onClick={() => setExpenseDialog({ step: 'item' })}
-                  className="w-full flex items-center gap-3 border border-slate-300 rounded-xl px-4 py-3 mb-3 text-left hover:bg-slate-50 transition-colors"
-                >
-                  {(() => {
-                    const ItemIcon = selectedExpenseDest ? MapPin : (selectedExpenseCategory ? selectedExpenseCategory.Icon : Receipt);
-                    return <ItemIcon className="w-5 h-5 text-slate-600 shrink-0" />;
-                  })()}
-                  <div className="min-w-0 flex-1">
-                    <p className={`truncate ${selectedExpenseDest || selectedExpenseCategory ? 'font-semibold text-slate-800' : 'text-slate-500'}`}>
-                      {selectedExpenseDest ? selectedExpenseDest.placeName : (selectedExpenseCategory ? selectedExpenseCategory.label : 'Chọn mục')}
-                    </p>
-                    {selectedExpenseDest && (
-                      <p className="text-xs text-slate-500">Danh mục: {(selectedExpenseCategory || CATEGORY_MAP.OTHER).label}</p>
-                    )}
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-slate-500 shrink-0" />
-                </button>
-
-                {/* Mô tả: hiện sau khi đã chọn mục */}
-                {(selectedExpenseDest || selectedExpenseCategory) && (
-                  <label className="block border border-slate-300 rounded-xl px-4 pt-2 pb-1 mb-3 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
-                    <span className="text-xs font-bold text-slate-900 block">Thêm mô tả</span>
-                    <textarea
-                      value={expenseForm.description}
-                      onChange={(e) => updateExpenseForm({ description: e.target.value })}
-                      maxLength={500}
-                      className="w-full bg-transparent outline-none text-sm text-slate-700 resize-none h-14"
-                    />
-                  </label>
-                )}
-
-                {/* Trả bởi */}
-                <label className="flex items-center justify-between gap-3 border border-slate-300 rounded-xl px-4 py-3 mb-3">
-                  <span className="font-bold text-slate-900 shrink-0">Trả bởi</span>
-                  <select
-                    value={expenseForm.payerId ?? ''}
-                    onChange={(e) => updateExpenseForm({ payerId: Number(e.target.value) })}
-                    className="bg-transparent outline-none font-semibold text-slate-700 text-right cursor-pointer min-w-0"
-                  >
-                    {expenseData.members.map(m => (
-                      <option key={m.userId} value={m.userId}>
-                        {m.userId === expenseData.currentUserId ? `Bạn (${m.fullName})` : m.fullName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {/* Chia tiền */}
-                <div className="border border-slate-300 rounded-xl px-4 py-3 mb-3">
-                  <label className="flex items-center justify-between gap-3">
-                    <span className="font-bold text-slate-900">Chia tiền</span>
-                    <select
-                      value={expenseForm.splitMode}
-                      onChange={(e) => updateExpenseForm({ splitMode: e.target.value })}
-                      className="bg-transparent outline-none font-semibold text-slate-700 text-right cursor-pointer"
-                    >
-                      <option value="none">Không chia</option>
-                      <option value="equal">Chia đều</option>
-                    </select>
-                  </label>
-                  {expenseForm.splitMode === 'equal' && (
-                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-2.5">
-                      {expenseData.members.map(m => {
-                        const checked = expenseForm.splitUserIds.includes(m.userId);
-                        return (
-                          <label key={m.userId} className="flex items-center justify-between gap-3 cursor-pointer">
-                            <span className="flex items-center gap-2.5 min-w-0">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleSplitUser(m.userId)}
-                                className="h-4 w-4 accent-[#FF5645]"
-                              />
-                              <span className="truncate text-sm text-slate-700">
-                                {m.userId === expenseData.currentUserId ? `Bạn (${m.fullName})` : m.fullName}
-                              </span>
-                            </span>
-                            {checked && splitShare > 0 && (
-                              <span className="text-xs font-semibold text-slate-500 shrink-0">≈ {formatVND(splitShare)}</span>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Ngày */}
-                <label className="flex items-center justify-between gap-3 px-1 mb-5 text-sm">
-                  <span className="text-slate-600"><span className="font-bold">Ngày:</span> Tùy chọn</span>
-                  <input
-                    type="date"
-                    value={expenseForm.date}
-                    onChange={(e) => updateExpenseForm({ date: e.target.value })}
-                    className="border border-slate-200 rounded-lg px-2 py-1 text-slate-700 outline-none focus:border-slate-400"
-                  />
-                </label>
-
-                {expenseError && <p className="text-sm text-rose-600 font-medium mb-3 text-center">{expenseError}</p>}
-
-                <div className="flex justify-center">
-                  <button
-                    onClick={submitExpense}
-                    disabled={isSavingExpense}
-                    className="px-14 py-3 bg-[#FF5645] text-white font-bold rounded-full hover:bg-[#E04B3B] transition-colors disabled:opacity-50"
-                  >
-                    {isSavingExpense ? 'Đang lưu...' : 'Lưu'}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Chọn mục</h3>
-
-                <p className="font-bold text-slate-900 mb-3">Chọn từ lịch trình của bạn</p>
-                {allDestinations.length === 0 ? (
-                  <p className="text-sm text-slate-400 mb-2">Lịch trình chưa có địa điểm nào.</p>
-                ) : (
-                  <div className="mb-1">
-                    {(showAllDests ? allDestinations : allDestinations.slice(0, 3)).map(d => (
-                      <button
-                        key={d.id}
-                        onClick={() => { updateExpenseForm({ destinationId: d.id }); setExpenseDialog({ step: 'form' }); }}
-                        className="w-full flex items-center gap-3 py-2 px-1 text-left rounded-lg hover:bg-slate-50 transition-colors"
-                      >
-                        <span className="h-9 w-9 shrink-0 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
-                          <MapPin className="w-4 h-4" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-slate-800 font-medium">{d.placeName}</span>
-                          <span className="block text-xs text-slate-400">Ngày {d.dayNumber}</span>
-                        </span>
-                        {expenseForm.destinationId === d.id && <span className="text-xs font-bold text-[#FF5645]">Đã chọn</span>}
-                      </button>
-                    ))}
-                    {allDestinations.length > 3 && (
-                      <button
-                        onClick={() => setShowAllDests(v => !v)}
-                        className="w-full flex items-center gap-3 py-2 px-1 text-left rounded-lg hover:bg-slate-50 transition-colors"
-                      >
-                        <span className="h-9 w-9 shrink-0 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </span>
-                        <span className="text-slate-800 font-medium">{showAllDests ? 'Thu gọn' : 'Xem tất cả'}</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-                {expenseForm.destinationId && (
-                  <button
-                    onClick={() => updateExpenseForm({ destinationId: null })}
-                    className="text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors"
-                  >
-                    Bỏ chọn địa điểm
-                  </button>
-                )}
-
-                <hr className="my-5 border-slate-200" />
-
-                <p className="font-bold text-slate-900 mb-3">Hoặc chọn theo danh mục</p>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                  {EXPENSE_CATEGORIES.map(({ key, label, Icon }) => (
-                    <button
-                      key={key}
-                      onClick={() => { updateExpenseForm({ category: key }); setExpenseDialog({ step: 'form' }); }}
-                      className={`flex flex-col items-center justify-center gap-2 rounded-xl py-4 text-xs font-semibold transition-colors ${
-                        expenseForm.category === key
-                          ? 'bg-red-50 text-[#FF5645] ring-1 ring-[#FF5645]'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      <Icon className="w-5 h-5" />
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ================= DIALOG SỬA NGÂN SÁCH ================= */}
-      {budgetDialogOpen && (
-        <div
-          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
-          onClick={() => { if (!isSavingBudget) setBudgetDialogOpen(false); }}
-        >
-          <div
-            className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 sm:p-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setBudgetDialogOpen(false)}
-              aria-label="Đóng"
-              className="absolute top-4 right-4 h-8 w-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Ngân sách chuyến đi</h3>
-            <label className="flex items-center gap-3 border border-slate-300 rounded-xl px-4 py-3 focus-within:border-slate-500 transition-colors">
-              <span className="font-bold text-slate-700">₫</span>
-              <input
-                type="number"
-                min="0"
-                step="100000"
-                autoFocus
-                value={budgetInput}
-                onChange={(e) => setBudgetInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') saveBudget(); }}
-                placeholder="VD: 10000000"
-                className="w-full bg-transparent outline-none text-lg font-bold text-slate-800 placeholder:text-slate-300"
-              />
-            </label>
-            <p className="text-sm text-slate-500 mt-2 h-5">{Number(budgetInput) > 0 ? `= ${formatVND(budgetInput)}` : ''}</p>
-            <div className="flex justify-center mt-4">
-              <button
-                onClick={saveBudget}
-                disabled={isSavingBudget}
-                className="px-12 py-3 bg-[#FF5645] text-white font-bold rounded-full hover:bg-[#E04B3B] transition-colors disabled:opacity-50"
-              >
-                {isSavingBudget ? 'Đang lưu...' : 'Lưu'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ================= DIALOG CÂN ĐỐI NHÓM ================= */}
-      {balanceDialog && (
-        <div
-          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
-          onClick={() => setBalanceDialog(null)}
-        >
-          <div
-            className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-6 sm:p-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setBalanceDialog(null)}
-              aria-label="Đóng"
-              className="absolute top-4 right-4 h-8 w-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Cân đối nhóm</h3>
-
-            {balanceDialog.loading && <p className="text-center text-slate-500">Đang tính toán...</p>}
-            {balanceDialog.error && <p className="text-center text-rose-600 font-medium">{balanceDialog.error}</p>}
-
-            {balanceDialog.data && (
-              <>
-                <p className="font-bold text-slate-900 mb-3">Số dư của mỗi người</p>
-                <div className="mb-6">
-                  {balanceDialog.data.balances.map(b => {
-                    const balance = Number(b.balance);
-                    return (
-                      <div key={b.userId} className="flex items-center justify-between gap-3 py-2.5 border-b border-slate-100 last:border-0">
-                        <span className="truncate text-slate-800 font-medium">
-                          {b.userId === expenseData.currentUserId ? `Bạn (${b.fullName})` : b.fullName}
-                        </span>
-                        <span className={`shrink-0 text-sm font-bold ${balance > 0 ? 'text-emerald-600' : balance < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
-                          {balance > 0 ? `được nhận ${formatVND(balance)}` : balance < 0 ? `còn nợ ${formatVND(-balance)}` : 'đã cân bằng'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <p className="font-bold text-slate-900 mb-3">Cách thanh toán</p>
-                {balanceDialog.data.transfers.length === 0 ? (
-                  <p className="text-sm text-slate-500">Không ai nợ ai, mọi khoản tiền đã cân bằng.</p>
-                ) : (
-                  balanceDialog.data.transfers.map((t, i) => (
-                    <div key={i} className="flex items-center justify-between gap-3 py-2.5 border-b border-slate-100 last:border-0">
-                      <span className="min-w-0 text-sm text-slate-700">
-                        <span className="font-bold">{t.fromUserId === expenseData.currentUserId ? 'Bạn' : t.fromName}</span>
-                        {' '}chuyển cho{' '}
-                        <span className="font-bold">{t.toUserId === expenseData.currentUserId ? 'bạn' : t.toName}</span>
-                      </span>
-                      <span className="shrink-0 font-bold text-slate-900">{formatVND(t.amount)}</span>
-                    </div>
-                  ))
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ================= DIALOG PHÂN TÍCH CHI TIÊU ================= */}
-      {breakdownOpen && (
-        <div
-          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
-          onClick={() => setBreakdownOpen(false)}
-        >
-          <div
-            className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-6 sm:p-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setBreakdownOpen(false)}
-              aria-label="Đóng"
-              className="absolute top-4 right-4 h-8 w-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h3 className="text-xl font-extrabold text-slate-900 text-center mb-6 px-8">Phân tích chi tiêu</h3>
-
-            {categoryTotals.length === 0 ? (
-              <p className="text-center text-slate-500">Chưa có khoản chi nào để phân tích.</p>
-            ) : (
-              categoryTotals.map(({ key, label, Icon, amount, percent }) => (
-                <div key={key} className="mb-4">
-                  <div className="flex items-center justify-between gap-3 mb-1.5">
-                    <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                      <Icon className="w-4 h-4 text-slate-500" /> {label}
-                    </span>
-                    <span className="text-sm font-bold text-slate-900">{formatVND(amount)} <span className="text-slate-400 font-medium">({percent}%)</span></span>
-                  </div>
-                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full rounded-full bg-indigo-500" style={{ width: `${percent}%` }} />
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      <ExpenseDialogs
+        expenseDialog={expenseDialog}
+        closeExpenseDialog={closeExpenseDialog}
+        setExpenseDialog={setExpenseDialog}
+        expenseForm={expenseForm}
+        updateExpenseForm={updateExpenseForm}
+        selectedExpenseDest={selectedExpenseDest}
+        selectedExpenseCategory={selectedExpenseCategory}
+        expenseData={expenseData}
+        toggleSplitUser={toggleSplitUser}
+        splitShare={splitShare}
+        expenseError={expenseError}
+        submitExpense={submitExpense}
+        isSavingExpense={isSavingExpense}
+        allDestinations={allDestinations}
+        showAllDests={showAllDests}
+        setShowAllDests={setShowAllDests}
+        budgetDialogOpen={budgetDialogOpen}
+        isSavingBudget={isSavingBudget}
+        setBudgetDialogOpen={setBudgetDialogOpen}
+        budgetInput={budgetInput}
+        setBudgetInput={setBudgetInput}
+        saveBudget={saveBudget}
+        balanceDialog={balanceDialog}
+        setBalanceDialog={setBalanceDialog}
+        breakdownOpen={breakdownOpen}
+        setBreakdownOpen={setBreakdownOpen}
+        categoryTotals={categoryTotals}
+      />
 
       {/* ================= DIALOG ĐÁNH GIÁ SAU KHI "ĐÃ ĐI" ================= */}
       {visitDialog && (
