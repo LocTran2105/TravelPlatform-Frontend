@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { createPortal } from 'react-dom';
-import { MapContainer, Marker, useMap, Polyline } from 'react-leaflet';
+import { MapContainer, Marker, useMap, useMapEvents, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { 
@@ -12,7 +12,8 @@ import {
   Wand2, Plane, Bed, Car, Train, CheckSquare, Compass,
   LayoutDashboard, CalendarDays, Wallet, Camera,
   Clock, MessageSquare, Star, Heart, Send, Image as ImageIcon, Play,
-  Utensils, Wine, Landmark, Ticket, ShoppingBag, ShoppingCart, Fuel, Trash2, Pencil
+  Utensils, Wine, Landmark, Ticket, ShoppingBag, ShoppingCart, Fuel, Trash2, Pencil,
+  ArrowUp, ArrowDown, CornerDownRight, Navigation
 } from 'lucide-react';
 import AiAssistantChat from './AiAssistantChat';
 import ShareTripModal from './ShareTripModal';
@@ -21,8 +22,10 @@ import TripMembersDialog from './TripMembersDialog';
 import TripPlannerBoard from './TripPlannerBoard';
 import TripCoverImage from './TripCoverImage';
 import CoverImagePicker from './CoverImagePicker';
-import { MapHoverPreview, usePlaceCovers, getDestPlaceId } from './PlaceHoverPreview';
+import { MapHoverPreview, usePlaceCovers, usePlaceActivity, getDestPlaceId } from './PlaceHoverPreview';
 import ResilientTileLayer from './ResilientTileLayer';
+import DirectionsPanel from './DirectionsPanel';
+import { presetForDay } from '../utils/directions';
 
 // ================= COMPONENT HỖ TRỢ BẢN ĐỒ =================
 // boundsKey / activeKey là chuỗi/số ổn định: bản đồ chỉ di chuyển khi tập điểm hoặc điểm được chọn THẬT SỰ đổi,
@@ -63,6 +66,12 @@ function MapBounds({ points, boundsKey, activePoint, activeKey }) {
   return null;
 }
 
+// Bấm vào vùng trống của bản đồ -> bỏ ghim thẻ xem nhanh.
+function MapBackgroundClick({ onClick }) {
+  useMapEvents({ click: onClick });
+  return null;
+}
+
 function MapSizeObserver({ resizeKey }) {
   const map = useMap();
 
@@ -97,6 +106,8 @@ function MapSizeObserver({ resizeKey }) {
 
 // Thẻ địa điểm AI (AiAssistantChat) gửi payload JSON với MIME này khi kéo.
 const PLACE_MIME_TYPE = 'application/x-travel-place';
+// Kéo thả để sắp xếp lại địa điểm đã có trong lịch trình (trong ngày hoặc sang ngày khác).
+const DEST_MIME_TYPE = 'application/x-travel-destination';
 
 // Mỗi ngày một màu (ngày 1 giữ màu thương hiệu) để phân biệt các ngày khi xem toàn bộ chuyến đi
 const DAY_COLORS = ['#FF5645', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6'];
@@ -553,6 +564,8 @@ const TripDetail = () => {
   const geocodeAttemptedRef = useRef(new Set());
 
   const [addingDayId, setAddingDayId] = useState(null);
+  // Thông báo hiện trên ô tìm kiếm khi người dùng kéo một gợi ý "Tham khảo" (AI chưa xác minh vị trí).
+  const [searchNotice, setSearchNotice] = useState(null); // { dayId, name } | null
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   
@@ -597,22 +610,42 @@ const TripDetail = () => {
   const hoverTimerRef = useRef(null);
   const { covers: destCovers } = usePlaceCovers(trip);
 
-  const showHover = (id, source, delayMs = 0) => {
+  const placeActivity = usePlaceActivity(trip);
+
+  // pinned = thẻ hiện do người dùng CHỌN địa điểm (bấm dòng/marker): không tự ẩn khi rời chuột.
+  const showHover = (id, source, delayMs = 0, pinned = false) => {
     clearTimeout(hoverTimerRef.current);
     if (delayMs > 0) {
-      hoverTimerRef.current = setTimeout(() => setHover({ id, source }), delayMs);
+      hoverTimerRef.current = setTimeout(() => setHover({ id, source, pinned }), delayMs);
     } else {
-      setHover({ id, source });
+      setHover({ id, source, pinned });
     }
   };
-  const hideHover = (id) => {
+  // Ẩn có độ trễ để người dùng kịp rê chuột từ dòng/marker sang thẻ (rê vào thẻ thì keepHover hủy việc ẩn).
+  const hideHover = (id, { force = false, delayMs = 0 } = {}) => {
     clearTimeout(hoverTimerRef.current);
-    setHover((current) => (current && (id == null || current.id === id) ? null : current));
+    const apply = () => setHover((current) => {
+      if (!current) return current;
+      if (id != null && current.id !== id) return current;
+      if (current.pinned && !force) return current;
+      return null;
+    });
+    if (delayMs > 0) hoverTimerRef.current = setTimeout(apply, delayMs);
+    else apply();
   };
+  const keepHover = () => clearTimeout(hoverTimerRef.current);
   useEffect(() => () => clearTimeout(hoverTimerRef.current), []);
 
   // Kéo thẻ AI thả vào ngày: dropDayId = ngày đang được kéo qua, droppingDayId = ngày đang lưu.
   const [dropDayId, setDropDayId] = useState(null);
+  // Sắp xếp lại lịch trình: địa điểm đang kéo + vị trí sẽ chèn ({ dayId, index }).
+  const [draggingDestId, setDraggingDestId] = useState(null);
+  const [reorderTarget, setReorderTarget] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+  // Ngày hiển thị trên bản đồ: 'auto' = theo ngày đang cuộn tới, 'all' = cả chuyến, hoặc id của một ngày.
+  const [mapDayMode, setMapDayMode] = useState('auto');
+  // Chỉ đường: null = đóng; { originId ('current' | id địa điểm), destinationId, waypointIds, mode }.
+  const [directions, setDirections] = useState(null);
   const [droppingDayId, setDroppingDayId] = useState(null);
 
   // Menu "6 chấm" của từng địa điểm trong lịch trình
@@ -802,31 +835,82 @@ const TripDetail = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, [visitDialog, isSubmittingVisit]);
 
+  // Tìm địa điểm khi thêm vào ngày:
+  //  1) DB của hệ thống trước (Place PARTNER đã được Admin xác minh + POI OSM đã lưu) -> OSM thiếu vẫn tìm được;
+  //  2) Photon/OSM sau, ưu tiên gần các điểm đã có của chuyến đi.
   useEffect(() => {
+    const q = searchQuery.trim();
+    // Chuỗi quá ngắn: không gọi API; danh sách gợi ý bị ẩn khi render (visibleSuggestions).
+    if (!addingDayId || q.length < 2) return undefined;
+    const controller = new AbortController();
+
     const fetchPlaces = async () => {
-      if (searchQuery.trim().length < 2) { setSuggestions([]); return; }
-      try {
-        const query = encodeURIComponent(searchQuery.trim());
-        const response = await fetch(`https://photon.komoot.io/api/?q=${query}&limit=5`);
-        const data = await response.json();
-        const formatted = data.features.map(f => {
-          const p = f.properties;
-          return { id: p.osm_id, name: p.name || p.street || p.city, address: [p.city, p.country].filter(Boolean).join(', '), lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
-        }).filter(p => p.name);
-        setSuggestions(formatted);
-      } catch (err) { console.error(err); }
+      const token = localStorage.getItem('token');
+      // Điểm neo cho Photon: địa điểm đầu tiên đã có tọa độ trong chuyến đi.
+      const anchorDest = (trip?.tripDays || []).flatMap(d => d.destinations || []).find(hasCoord);
+      const anchor = anchorDest ? { lat: Number(anchorDest.latitude), lng: Number(anchorDest.longitude) } : null;
+
+      const dbRequest = axios.get('http://localhost:8080/api/v1/places/search', {
+        params: { q, destination: trip?.destination || '', limit: 5 },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: controller.signal,
+      }).then(res => (Array.isArray(res.data) ? res.data : []).map(p => ({
+        key: `db-${p.id}`,
+        source: 'db',
+        placeId: p.id,
+        verified: Boolean(p.verified),
+        name: p.name,
+        address: p.address || p.destination || '',
+        lat: Number(p.latitude),
+        lon: Number(p.longitude),
+      })));
+
+      const photonParams = new URLSearchParams({ q, limit: '5' });
+      if (anchor) { photonParams.set('lat', String(anchor.lat)); photonParams.set('lon', String(anchor.lng)); }
+      const photonRequest = fetch(`https://photon.komoot.io/api/?${photonParams.toString()}`, { signal: controller.signal })
+        .then(res => (res.ok ? res.json() : { features: [] }))
+        .then(data => (data.features || []).map(f => {
+          const p = f.properties || {};
+          return {
+            key: `osm-${p.osm_type || ''}${p.osm_id}`,
+            source: 'photon',
+            name: p.name || p.street || p.city,
+            address: [p.street && p.name ? p.street : null, p.city, p.country].filter(Boolean).join(', '),
+            lat: f.geometry.coordinates[1],
+            lon: f.geometry.coordinates[0],
+          };
+        }).filter(p => p.name));
+
+      const [dbResult, photonResult] = await Promise.allSettled([dbRequest, photonRequest]);
+      if (controller.signal.aborted) return;
+      const fromDb = dbResult.status === 'fulfilled' ? dbResult.value : [];
+      const fromPhoton = photonResult.status === 'fulfilled' ? photonResult.value : [];
+      // Bỏ kết quả Photon trùng tên với địa điểm đã có trong DB.
+      const dbNames = new Set(fromDb.map(p => String(p.name).trim().toLowerCase()));
+      setSuggestions([...fromDb, ...fromPhoton.filter(p => !dbNames.has(String(p.name).trim().toLowerCase()))].slice(0, 8));
     };
-    const delay = setTimeout(() => { if (addingDayId) fetchPlaces(); }, 500);
-    return () => clearTimeout(delay);
-  }, [searchQuery, addingDayId]);
+
+    const delay = setTimeout(() => { fetchPlaces().catch(err => { if (err?.name !== 'AbortError' && err?.name !== 'CanceledError') console.error(err); }); }, 400);
+    return () => { clearTimeout(delay); controller.abort(); };
+  // trip chỉ dùng để lấy điểm neo/điểm đến; không cần tìm lại mỗi khi dữ liệu chuyến đi tải lại.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, addingDayId, trip?.destination]);
+  const visibleSuggestions = searchQuery.trim().length >= 2 ? suggestions : [];
 
   const handleAddDestination = async (place, dayId) => {
+    if (place.source === 'db') {
+      try {
+        await addRecommendedPlaceToDay({ placeId: place.placeId, name: place.name }, dayId);
+        setAddingDayId(null); setSearchQuery(''); setSuggestions([]); setSearchNotice(null);
+      } catch (err) { alert(getApiError(err, err?.message || 'Không thêm được địa điểm.')); }
+      return;
+    }
     try {
       const token = localStorage.getItem('token');
       await axios.post(`http://localhost:8080/api/trips/days/${dayId}/destinations`, {
         placeName: place.name, latitude: place.lat, longitude: place.lon, note: place.address, estimatedCost: 0
       }, { headers: { Authorization: `Bearer ${token}` }});
-      setAddingDayId(null); setSearchQuery(''); setSuggestions([]); fetchTripDetails(); 
+      setAddingDayId(null); setSearchQuery(''); setSuggestions([]); setSearchNotice(null); fetchTripDetails(); 
     } catch (err) { alert("Lỗi: " + (err.response?.data || err.message)); }
   };
 
@@ -834,6 +918,9 @@ const TripDetail = () => {
   // Backend lấy tên/tọa độ/loại/chi phí tham khảo từ bảng places khi có placeId, nên chỉ cần gửi ID.
   const addRecommendedPlaceToDay = async (place, dayId) => {
     if (!canEdit) throw new Error('Bạn chỉ có quyền xem chuyến đi này.');
+    if (place?.trustLevel === 'AI_REFERENCE') {
+      throw new Error('Địa điểm tham khảo chưa được xác nhận vị trí nên chưa thể thêm trực tiếp. Hãy tìm địa chỉ trong ô tìm kiếm của ngày.');
+    }
     const placeId = Number(place?.placeId ?? place?.id);
     const placeName = place?.name || place?.placeName || 'Địa điểm';
     if (!Number.isSafeInteger(placeId) || placeId <= 0) {
@@ -858,9 +945,130 @@ const TripDetail = () => {
 
   const hasPlacePayload = (event) => Array.from(event.dataTransfer?.types || []).includes(PLACE_MIME_TYPE);
 
+  // Gợi ý "Tham khảo" của AI chưa có trong DB (chưa có tọa độ) -> không thêm thẳng được.
+  // Mở ô tìm kiếm của ngày đó, điền sẵn tên + khu vực để người dùng tự kiểm tra và chọn kết quả đúng.
+  const openReferenceSearch = (place, day) => {
+    if (!canEdit || !day) return;
+    const name = String(place?.name || place?.placeName || '').trim();
+    if (!name) return;
+    const area = String(place?.address || '').trim();
+    setAddingDayId(day.id);
+    setSearchQuery(area ? `${name}, ${area}` : name);
+    setSearchNotice({ dayId: day.id, name });
+    requestAnimationFrame(() => dayRefs.current[day.id]?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+
+  // Nút "Tìm trên bản đồ" trong thẻ Tham khảo của AI chat.
+  const openReferenceSearchRef = useRef(openReferenceSearch);
+  useEffect(() => { openReferenceSearchRef.current = openReferenceSearch; });
+  useEffect(() => {
+    const onReferenceSearch = (event) => {
+      const detail = event?.detail || {};
+      if (String(detail.tripId) !== String(tripId)) return;
+      const days = tripRef.current?.tripDays || [];
+      const day = days.find(d => String(d.id) === String(detail.dayId)) || days[0];
+      openReferenceSearchRef.current(detail.place, day);
+    };
+    window.addEventListener('travel-ai-reference-search', onReferenceSearch);
+    return () => window.removeEventListener('travel-ai-reference-search', onReferenceSearch);
+  }, [tripId]);
+
   // Gắn vào khối Ngày (Lịch trình) và mục "Ngày N" ở thanh bên. Người chỉ xem (VIEWER) không thả được.
+  const hasDestPayload = (event) => Array.from(event.dataTransfer?.types || []).includes(DEST_MIME_TYPE);
+
+  // Chuyển địa điểm destId tới vị trí toIndex của ngày toDayId (cập nhật giao diện ngay, rồi lưu lên server).
+  const moveDestination = async (destId, toDayId, toIndex) => {
+    if (!canEdit || savingOrder) return;
+    const days = trip?.tripDays || [];
+    const fromDay = days.find(d => (d.destinations || []).some(x => x.id === destId));
+    const toDay = days.find(d => d.id === toDayId);
+    if (!fromDay || !toDay) return;
+
+    const fromList = [...(fromDay.destinations || [])];
+    const fromIndex = fromList.findIndex(x => x.id === destId);
+    const [moving] = fromList.splice(fromIndex, 1);
+    const sameDay = fromDay.id === toDay.id;
+    const targetList = sameDay ? fromList : [...(toDay.destinations || [])];
+    let insertAt = sameDay && fromIndex < toIndex ? toIndex - 1 : toIndex;
+    insertAt = Math.max(0, Math.min(insertAt, targetList.length));
+    if (sameDay && insertAt === fromIndex) return; // thả lại đúng chỗ cũ
+    targetList.splice(insertAt, 0, moving);
+
+    setTrip(prev => ({
+      ...prev,
+      tripDays: (prev?.tripDays || []).map(d => {
+        if (d.id === toDay.id) return { ...d, destinations: targetList };
+        if (d.id === fromDay.id) return { ...d, destinations: fromList };
+        return d;
+      }),
+    }));
+
+    const body = { days: [{ dayId: toDay.id, destinationIds: targetList.map(x => x.id) }] };
+    if (!sameDay) body.days.push({ dayId: fromDay.id, destinationIds: fromList.map(x => x.id) });
+    setSavingOrder(true);
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put('http://localhost:8080/api/trips/days/order', body, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      alert(getApiError(err, 'Không lưu được thứ tự lịch trình. Dữ liệu sẽ được tải lại.'));
+    } finally {
+      setSavingOrder(false);
+      fetchTripDetails(); // đồng bộ lại (rollback nếu lỗi)
+    }
+  };
+
+  const handleDestDrop = (event, dayId, fallbackIndex) => {
+    event.preventDefault();
+    event.stopPropagation();
+    let payload;
+    try { payload = JSON.parse(event.dataTransfer.getData(DEST_MIME_TYPE)); } catch { payload = null; }
+    const index = reorderTarget?.dayId === dayId ? reorderTarget.index : fallbackIndex;
+    setReorderTarget(null);
+    setDraggingDestId(null);
+    setDropDayId(null);
+    if (payload?.destId != null) moveDestination(payload.destId, dayId, index);
+  };
+
+  // Thuộc tính kéo/thả cho từng dòng địa điểm: thả lên nửa trên = chèn trước, nửa dưới = chèn sau.
+  const getDestRowDragProps = (day, dest, idx) => (canEdit ? {
+    draggable: true,
+    onDragStart: (event) => {
+      if (event.target.closest?.('input, textarea, button, select')) { event.preventDefault(); return; }
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData(DEST_MIME_TYPE, JSON.stringify({ destId: dest.id, fromDayId: day.id }));
+      setDraggingDestId(dest.id);
+      setDestMenuId(null);
+      hideHover(null, { force: true });
+    },
+    onDragEnd: () => { setDraggingDestId(null); setReorderTarget(null); setDropDayId(null); },
+    onDragOver: (event) => {
+      if (!hasDestPayload(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = 'move';
+      const rect = event.currentTarget.getBoundingClientRect();
+      const index = idx + (event.clientY > rect.top + rect.height / 2 ? 1 : 0);
+      if (reorderTarget?.dayId !== day.id || reorderTarget?.index !== index) setReorderTarget({ dayId: day.id, index });
+    },
+    onDrop: (event) => {
+      if (!hasDestPayload(event)) return;
+      handleDestDrop(event, day.id, idx);
+    },
+  } : {});
+
   const getDayDropProps = (day) => (canEdit ? {
     onDragOver: (event) => {
+      if (hasDestPayload(event)) {
+        // Kéo địa điểm vào vùng trống của ngày (hoặc mục "Ngày N" ở thanh bên) -> đưa xuống cuối ngày đó.
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        const end = (day.destinations || []).length;
+        if (reorderTarget?.dayId !== day.id || reorderTarget?.index !== end) setReorderTarget({ dayId: day.id, index: end });
+        if (dropDayId !== day.id) setDropDayId(day.id);
+        return;
+      }
       if (!hasPlacePayload(event)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'copy';
@@ -869,8 +1077,13 @@ const TripDetail = () => {
     onDragLeave: (event) => {
       if (event.currentTarget.contains(event.relatedTarget)) return;
       setDropDayId(current => (current === day.id ? null : current));
+      setReorderTarget(current => (current?.dayId === day.id ? null : current));
     },
     onDrop: async (event) => {
+      if (hasDestPayload(event)) {
+        handleDestDrop(event, day.id, (day.destinations || []).length);
+        return;
+      }
       if (!hasPlacePayload(event)) return;
       event.preventDefault();
       setDropDayId(null);
@@ -878,6 +1091,10 @@ const TripDetail = () => {
       try {
         place = JSON.parse(event.dataTransfer.getData(PLACE_MIME_TYPE));
       } catch {
+        return;
+      }
+      if (place?.trustLevel === 'AI_REFERENCE' || !(Number(place?.placeId) > 0)) {
+        openReferenceSearch(place, day);
         return;
       }
       if (droppingDayId != null) return;
@@ -910,7 +1127,7 @@ const TripDetail = () => {
         setActiveDestination(null);
         setIsPanelOpen(false);
       }
-      hideHover(dest.id);
+      hideHover(dest.id, { force: true });
       setDestMenuId(null);
       // Cập nhật ngay trên giao diện, sau đó đồng bộ lại dữ liệu thật từ server.
       setTrip(prev => ({
@@ -928,10 +1145,18 @@ const TripDetail = () => {
     }
   };
 
+  // Bấm vào địa điểm trong lịch trình hoặc marker: bản đồ bay tới địa điểm và hiện thẻ xem nhanh (ghim).
+  // Trang thông tin (giới thiệu, đánh giá, bài đăng) chỉ mở khi bấm vào thẻ xem nhanh.
+  const selectDestination = (dest, idx) => {
+    setActiveDestination({ ...dest, index: idx + 1 });
+    setIsPanelOpen(false);
+    showHover(dest.id, 'select', 0, true);
+  };
+
   const handleDestinationClick = async (dest, idx) => {
     const requestId = ++activeDestinationRequestRef.current;
     // Đã mở panel chi tiết thì card xem nhanh không cần nữa (trên màn hình cảm ứng không có mouseleave để tự tắt).
-    hideHover();
+    hideHover(null, { force: true });
     setActiveDestination({ ...dest, index: idx + 1 });
     setIsPanelOpen(true);
     setNewReviewFiles([]);
@@ -1264,6 +1489,7 @@ const TripDetail = () => {
   };
 
   const handleScrollToDay = (dayId) => {
+    setMapDayMode('auto'); // bấm ngày ở thanh bên: bản đồ lại đi theo ngày đang xem
     setActiveSection('itinerary');
     setFocusedDayId(dayId);
     setActiveDestination(null);
@@ -1356,6 +1582,32 @@ const TripDetail = () => {
     }).filter(Boolean),
   })), [trip, geocodedCoordinates]);
 
+  // Mọi địa điểm có tọa độ của chuyến đi (cho bảng chỉ đường).
+  const directionStops = useMemo(() => {
+    const dayNumberById = new Map((trip?.tripDays || []).map(d => [d.id, d.dayNumber]));
+    return routeDays.flatMap(d => d.stops.map(s => ({
+      id: s.id, name: s.dest?.placeName || 'Địa điểm', lat: s.lat, lng: s.lng, number: s.number,
+      dayNumber: dayNumberById.get(d.id),
+    })));
+  }, [routeDays, trip]);
+
+  const openDirections = (patch = {}) => {
+    setIsPanelOpen(false);
+    setDirections(prev => ({
+      originId: null, destinationId: null, waypointIds: [], mode: 'two-wheeler',
+      ...(prev || {}),
+      ...patch,
+    }));
+  };
+
+  // Chỉ đường cả ngày: điểm đầu -> điểm cuối, các điểm giữa là điểm dừng theo đúng thứ tự lịch trình.
+  const openDayDirections = (dayId) => {
+    const preset = presetForDay(routeDays.find(d => d.id === dayId)?.stops || []);
+    if (!preset) return;
+    setMapDayMode(dayId);
+    openDirections(preset);
+  };
+
   // Địa điểm chưa có tọa độ và Photon không tìm được được giữ lại để hiển thị cảnh báo trên bản đồ.
   const unmappedDestinations = useMemo(() => (trip?.tripDays || []).flatMap(day =>
     (day.destinations || []).filter(dest => !hasCoord(dest) && !geocodedCoordinates[dest.id])
@@ -1369,13 +1621,20 @@ const TripDetail = () => {
   );
 
   // Các điểm đang hiển thị trên bản đồ (1 ngày được chọn, hoặc tất cả các ngày)
+  // Ngày đang xem chưa có điểm nào trên bản đồ -> hiện cả chuyến đi thay vì bản đồ trống.
+  const dayHasStops = (dayId) => Boolean(dayId) && routeDays.some(d => d.id === dayId && d.stops.length > 0);
+  const mapDayId = mapDayMode === 'all'
+    ? null
+    : mapDayMode === 'auto'
+      ? (dayHasStops(focusedDayId) ? focusedDayId : null)
+      : (dayHasStops(mapDayMode) ? mapDayMode : null);
   const mapStops = useMemo(() => routeDays
-    .filter(d => !focusedDayId || d.id === focusedDayId)
-    .flatMap(d => d.stops.map(s => ({ ...s, color: d.color }))), [routeDays, focusedDayId]);
+    .filter(d => !mapDayId || d.id === mapDayId)
+    .flatMap(d => d.stops.map(s => ({ ...s, color: d.color }))), [routeDays, mapDayId]);
 
   const boundsKey = useMemo(
-    () => `${focusedDayId || 'all'}#${mapStops.map(s => `${s.id}@${s.lat},${s.lng}`).join('|')}`,
-    [mapStops, focusedDayId]
+    () => `${mapDayId || 'all'}#${mapStops.map(s => `${s.id}@${s.lat},${s.lng}`).join('|')}`,
+    [mapStops, mapDayId]
   );
 
   // THỐNG KÊ ĐÁNH GIÁ (Google Maps Style)
@@ -1744,11 +2003,21 @@ const TripDetail = () => {
                       <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-3 mb-6"><span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Ngày {day.dayNumber}</span><span className="text-slate-500">{formatFullDate(day.dayDate)}</span>
                         {dropDayId === day.id && <span className="ml-auto text-xs font-bold text-indigo-600">Thả để thêm vào Ngày {day.dayNumber}</span>}
                         {droppingDayId === day.id && <span className="ml-auto text-xs font-bold text-slate-500">Đang thêm địa điểm…</span>}
+                        {dropDayId !== day.id && droppingDayId !== day.id && dayHasStops(day.id) && (
+                          <button
+                            type="button"
+                            onClick={() => openDayDirections(day.id)}
+                            title="Mở chỉ đường cho cả ngày trên Google Maps"
+                            className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold normal-case text-slate-600 transition hover:border-[#FF5645] hover:text-[#FF5645]"
+                          >
+                            <Navigation className="h-3.5 w-3.5" /> Chỉ đường
+                          </button>
+                        )}
                       </h3>
                       
                       <div className="space-y-4 mb-4">
                         {(!day.destinations || day.destinations.length === 0) ? (
-                          <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-2xl">
+                          <div className={`text-center py-6 border-2 border-dashed rounded-2xl ${draggingDestId != null && reorderTarget?.dayId === day.id ? 'border-[#FF5645] bg-red-50/40' : 'border-slate-100'}`}>
                             <CheckSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                             <p className="text-sm text-slate-400 font-medium">Bạn chưa thêm địa điểm nào.</p>
                           </div>
@@ -1757,16 +2026,20 @@ const TripDetail = () => {
                             const isActive = activeDestination?.id === dest.id;
                             const isVisited = dest.isVisited || false; 
 
+                            const showDropLineBefore = draggingDestId != null && reorderTarget?.dayId === day.id && reorderTarget.index === idx;
                             return (
+                              <Fragment key={dest.id}>
+                              {showDropLineBefore && <div className="ml-10 h-1 rounded-full bg-[#FF5645]" />}
                               <div 
-                                key={dest.id} 
+                                {...getDestRowDragProps(day, dest, idx)}
                                 onMouseEnter={() => showHover(dest.id, 'list', 120)}
-                                onMouseLeave={() => hideHover(dest.id)}
+                                onMouseLeave={() => hideHover(dest.id, { delayMs: 450 })}
                                 onClick={(e) => {
                                   if (e.target.closest('button') || e.target.closest('input')) return;
-                                  handleDestinationClick(dest, idx);
+                                  selectDestination(dest, idx);
                                 }} 
-                                className={`flex gap-3 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-all ${isActive ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-50'}`}
+                                title={canEdit ? 'Kéo để sắp xếp lại hoặc chuyển sang ngày khác' : undefined}
+                                className={`flex gap-3 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-all ${draggingDestId === dest.id ? 'opacity-40' : ''} ${isActive ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-50'}`}
                               >
                                 <div className="flex flex-col items-center mt-2 w-8 shrink-0">
                                   {isVisited ? (
@@ -1805,7 +2078,26 @@ const TripDetail = () => {
                                       {destMenuId === dest.id && (
                                         <>
                                           <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setDestMenuId(null); }} />
-                                          <div role="menu" className="absolute right-0 top-full mt-1 z-50 w-52 rounded-xl border border-slate-100 bg-white p-1 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                                          <div role="menu" className="absolute right-0 top-full mt-1 z-50 w-56 rounded-xl border border-slate-100 bg-white p-1 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                                            {/* Sắp xếp không cần kéo thả (dùng được trên điện thoại) */}
+                                            <button type="button" role="menuitem" disabled={idx === 0 || savingOrder}
+                                              onClick={() => { setDestMenuId(null); moveDestination(dest.id, day.id, idx - 1); }}
+                                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40">
+                                              <ArrowUp className="w-4 h-4" /> Di chuyển lên
+                                            </button>
+                                            <button type="button" role="menuitem" disabled={idx === day.destinations.length - 1 || savingOrder}
+                                              onClick={() => { setDestMenuId(null); moveDestination(dest.id, day.id, idx + 2); }}
+                                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40">
+                                              <ArrowDown className="w-4 h-4" /> Di chuyển xuống
+                                            </button>
+                                            {(trip.tripDays || []).filter(d => d.id !== day.id).map(other => (
+                                              <button key={other.id} type="button" role="menuitem" disabled={savingOrder}
+                                                onClick={() => { setDestMenuId(null); moveDestination(dest.id, other.id, (other.destinations || []).length); }}
+                                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40">
+                                                <CornerDownRight className="w-4 h-4" /> Chuyển sang Ngày {other.dayNumber}
+                                              </button>
+                                            ))}
+                                            <div className="my-1 border-t border-slate-100" />
                                             <button
                                               type="button"
                                               role="menuitem"
@@ -1979,25 +2271,51 @@ const TripDetail = () => {
 
                                 </div>
                               </div>
+                              </Fragment>
                             )
                           })
+                        )}
+                        {draggingDestId != null && reorderTarget?.dayId === day.id
+                          && reorderTarget.index === (day.destinations || []).length
+                          && (day.destinations || []).length > 0 && (
+                          <div className="ml-10 h-1 rounded-full bg-[#FF5645]" />
                         )}
                       </div>
 
                       {addingDayId === day.id ? (
                         <div ref={searchRef} className="relative mt-4 pl-12">
+                          {searchNotice?.dayId === day.id && (
+                            <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-5 text-amber-800">
+                              <p className="font-bold">“{searchNotice.name}” là gợi ý tham khảo của AI</p>
+                              <p className="mt-0.5">
+                                Địa điểm chưa được xác nhận nên vị trí cụ thể chưa có trên bản đồ của chúng tôi;
+                                tên và khu vực chỉ dựa trên thông tin từ Internet. Hãy kiểm tra kết quả tìm kiếm bên dưới,
+                                nếu đúng địa điểm bạn muốn thì chọn để tự thêm vào ngày này.
+                              </p>
+                            </div>
+                          )}
                           <div className="flex items-center border border-[#FF5645] rounded-xl px-4 py-3 bg-white shadow-sm ring-4 ring-[#FF5645]/10">
                             <Search className="w-5 h-5 text-[#FF5645] mr-3" />
                             <input type="text" autoFocus placeholder="Tìm quán ăn, khách sạn..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-1 outline-none text-base bg-transparent font-medium" />
-                            <button onClick={() => { setAddingDayId(null); setSearchQuery(''); }} className="p-1 hover:bg-slate-100 rounded-full"><X className="w-5 h-5 text-slate-400" /></button>
+                            <button onClick={() => { setAddingDayId(null); setSearchQuery(''); setSearchNotice(null); }} className="p-1 hover:bg-slate-100 rounded-full"><X className="w-5 h-5 text-slate-400" /></button>
                           </div>
                           
-                          {suggestions.length > 0 && (
+                          {visibleSuggestions.length > 0 && (
                             <div className="absolute top-full left-12 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden">
-                              {suggestions.map((place, idx) => (
-                                <div key={idx} onClick={() => handleAddDestination(place, day.id)} className="px-5 py-4 hover:bg-orange-50 cursor-pointer border-b border-slate-50 last:border-0 flex items-start gap-3">
-                                  <MapPin className="w-5 h-5 text-[#FF5645] mt-0.5 flex-shrink-0" />
-                                  <div><p className="text-base font-bold text-slate-800">{place.name}</p><p className="text-sm text-slate-500 truncate max-w-[300px]">{place.address}</p></div>
+                              {visibleSuggestions.map((place, idx) => (
+                                <div key={place.key || idx} onClick={() => handleAddDestination(place, day.id)} className="px-5 py-4 hover:bg-orange-50 cursor-pointer border-b border-slate-50 last:border-0 flex items-start gap-3">
+                                  <MapPin className={`w-5 h-5 mt-0.5 flex-shrink-0 ${place.source === 'db' ? 'text-emerald-600' : 'text-[#FF5645]'}`} />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-base font-bold text-slate-800 flex items-center gap-2 flex-wrap">
+                                      {place.name}
+                                      {place.source === 'db' && (
+                                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${place.verified ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                          {place.verified ? 'Đối tác đã xác minh' : 'Có trong hệ thống'}
+                                        </span>
+                                      )}
+                                    </p>
+                                    <p className="text-sm text-slate-500 truncate max-w-[420px]">{place.address}</p>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -2387,11 +2705,57 @@ const TripDetail = () => {
           )}
         </div>
 
+        {/* Chọn ngày hiển thị trên bản đồ (không cần cuộn danh sách) */}
+        {(trip.tripDays || []).length > 0 && !(activeDestination && isPanelOpen) && (
+          <div className="absolute left-3 top-3 z-[950] flex max-w-[calc(100%-150px)] items-center gap-1.5 overflow-x-auto rounded-2xl bg-white/95 p-1.5 shadow-lg ring-1 ring-black/5 backdrop-blur">
+            {[
+              { key: 'auto', label: 'Theo cuộn', title: 'Bản đồ đi theo ngày đang xem trong danh sách' },
+              { key: 'all', label: 'Cả chuyến', title: 'Hiện mọi ngày, mỗi ngày một màu' },
+            ].map(option => (
+              <button key={option.key} type="button" title={option.title} onClick={() => setMapDayMode(option.key)}
+                className={`shrink-0 rounded-xl px-2.5 py-1 text-xs font-bold transition ${mapDayMode === option.key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                {option.label}
+              </button>
+            ))}
+            {(trip.tripDays || []).map((day, i) => {
+              const color = DAY_COLORS[i % DAY_COLORS.length];
+              const selected = mapDayMode === day.id || (mapDayMode === 'auto' && mapDayId === day.id);
+              const empty = !dayHasStops(day.id);
+              return (
+                <button key={day.id} type="button" disabled={empty}
+                  title={empty ? `Ngày ${day.dayNumber} chưa có địa điểm trên bản đồ` : `Xem lộ trình Ngày ${day.dayNumber}`}
+                  onClick={() => { setMapDayMode(day.id); setActiveDestination(null); }}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${selected ? 'text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                  style={selected ? { backgroundColor: color } : undefined}>
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: selected ? '#fff' : color }} />
+                  N{day.dayNumber}
+                </button>
+              );
+            })}
+            {savingOrder && <span className="shrink-0 px-1 text-[11px] font-semibold text-slate-400">Đang lưu…</span>}
+            <span className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
+            <button type="button" onClick={() => (directions ? setDirections(null) : openDirections())}
+              className={`flex shrink-0 items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-bold transition ${directions ? 'bg-[#FF5645] text-white' : 'text-[#FF5645] hover:bg-red-50'}`}>
+              <Navigation className="h-3.5 w-3.5" /> Chỉ đường
+            </button>
+          </div>
+        )}
+
+        {directions && !(activeDestination && isPanelOpen) && (
+          <DirectionsPanel
+            stops={directionStops}
+            value={directions}
+            onChange={setDirections}
+            onClose={() => setDirections(null)}
+          />
+        )}
+
         {/* BẢN ĐỒ LEAFLET CHÍNH */}
         <MapContainer center={[16.047079, 108.206230]} zoom={5} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-          {/* Nền OSM, tự chuyển sang máy chủ tile khác (CARTO, OSM France) nếu mạng chặn */}
-          <ResilientTileLayer />
+          {/* Nền Google giống trang Home (như TripDetail cũ); mạng chặn Google thì tự chuyển sang nền OSM */}
+          <ResilientTileLayer preset="google" />
           <MapSizeObserver resizeKey={isSidebarOpen} />
+          <MapBackgroundClick onClick={() => hideHover(null, { force: true })} />
           <MapBounds
             points={mapStops.map(s => [s.lat, s.lng])}
             boundsKey={boundsKey}
@@ -2404,7 +2768,7 @@ const TripDetail = () => {
 
           {/* Đường đi thực tế (OSRM) theo từng ngày; đoạn không tìm được đường bộ vẽ nét đứt */}
           {routeDays
-            .filter(d => !focusedDayId || d.id === focusedDayId)
+            .filter(d => !mapDayId || d.id === mapDayId)
             .map(d => (routeData[d.id]?.segments || []).map((seg, i) => (
               <Polyline
                 key={`${d.id}-${i}-${seg.approx ? 'approx' : 'road'}-${d.color}`}
@@ -2423,13 +2787,13 @@ const TripDetail = () => {
               position={[s.lat, s.lng]}
               icon={getMarkerIcon(
                 s.number,
-                activeDestination?.id === s.id || (hover?.source === 'list' && hover.id === s.id),
+                activeDestination?.id === s.id || (hover?.source !== 'map' && hover?.id === s.id),
                 s.color
               )}
               eventHandlers={{
-                click: () => handleDestinationClick(s.dest, s.number - 1),
+                click: () => selectDestination(s.dest, s.number - 1),
                 mouseover: () => showHover(s.id, 'map'),
-                mouseout: () => hideHover(s.id),
+                mouseout: () => hideHover(s.id, { delayMs: 250 }),
               }}
             />
           ))}
@@ -2443,6 +2807,12 @@ const TripDetail = () => {
               <MapHoverPreview
                 stop={hoveredStop || null}
                 coverUrl={hoveredStop ? destCovers[String(getDestPlaceId(hoveredStop.dest))] : null}
+                activity={hoveredStop ? placeActivity[String(hoveredStop.dest?.placeName || '').trim()] : null}
+                onCardEnter={keepHover}
+                onCardLeave={() => hideHover(hover?.id, { delayMs: 200 })}
+                onCardClick={(stop) => handleDestinationClick(stop.dest, stop.number - 1)}
+                onDirectionsFrom={(stop) => { hideHover(null, { force: true }); openDirections({ originId: stop.id }); }}
+                onDirectionsTo={(stop) => { hideHover(null, { force: true }); openDirections({ destinationId: stop.id }); }}
               />
             );
           })()}

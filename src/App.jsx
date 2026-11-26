@@ -28,6 +28,7 @@ import AdminLayout from './layouts/AdminLayout';
 
 // Partner
 import PartnerApplication from './pages/partner/PartnerApplication';
+import BecomePartner from './pages/partner/BecomePartner';
 import PartnerDashboard from './pages/partner/PartnerDashboard';
 import PartnerBusiness from './pages/partner/PartnerBusiness';
 import PartnerSubmissions from './pages/partner/PartnerSubmissions';
@@ -86,6 +87,9 @@ function App() {
 
 
         {/* ================= PARTNER APPLICATION ================= */}
+
+        {/* Trang giới thiệu công khai cho đơn vị muốn làm đối tác */}
+        <Route path="/tro-thanh-doi-tac" element={<BecomePartner />} />
 
         <Route
           path="/partner-application"

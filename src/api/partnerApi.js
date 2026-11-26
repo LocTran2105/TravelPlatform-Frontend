@@ -1,4 +1,3 @@
-
 import axiosClient from './axiosClient';
 
 const BUSINESS_BASE = '/api/partner/businesses';
@@ -11,7 +10,7 @@ export const partnerApi = {
 
   // Lịch sử đăng ký Partner
   getMyApplications: () =>
-    axiosClient.get(`${APPLICATION_BASE}/mine`).then((r) => r.data),
+    axiosClient.get(`${APPLICATION_BASE}/my-applications`).then((r) => r.data),
 
   // Dashboard
   getDashboard: () =>

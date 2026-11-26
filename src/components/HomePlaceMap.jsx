@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Search, MapPin, Loader2, ExternalLink } from 'lucide-react';
+import ResilientTileLayer from './ResilientTileLayer';
 
 // Cùng nguồn với bản đồ ở trang chi tiết chuyến đi: tìm địa điểm bằng Photon (OpenStreetMap) ngay trên trình duyệt.
 const PHOTON_URL = 'https://photon.komoot.io/api/';
-const TILE_URL = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
 const MARKER_COLOR = '#FF5645';
 const RESULT_LIMIT = 8;
 // Thiên về kết quả ở Việt Nam nhưng vẫn tìm được nơi khác
@@ -207,7 +207,8 @@ export default function HomePlaceMap() {
 
       <div className="relative z-0 h-[26rem] overflow-hidden rounded-2xl border border-slate-200 lg:h-[34rem]">
         <MapContainer center={[16.047079, 108.20623]} zoom={5} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
-          <TileLayer url={TILE_URL} attribution="&copy; Google Maps" />
+          {/* Mặc định ảnh vệ tinh; nút "Bản đồ" chuyển về nền Google như trước */}
+          <ResilientTileLayer preset="google" />
           <FitBounds points={points} />
           <FlyTo target={flyTarget} />
           {places.map((p, i) => (

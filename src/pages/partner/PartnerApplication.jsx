@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
+  ArrowLeft,
   ArrowRight,
   BadgeCheck,
   Building2,
@@ -17,6 +19,12 @@ import {
   UserRound,
 } from 'lucide-react';
 import http, { getApiError } from '../../api/axiosClient';
+
+// Khớp kiểm tra ở backend (PartnerApplicationService): 10 số, 10 số + "-3 số" (chi nhánh) hoặc 12 số.
+const TAX_CODE_PATTERN = '[0-9]{10}(-[0-9]{3})?|[0-9]{12}';
+
+// Bỏ khoảng trắng/dấu chấm người dùng hay gõ kèm trước khi kiểm tra định dạng.
+const compact = (value) => value.replace(/[\s.]/g, '');
 
 const EMPTY_FORM = {
   displayName: '',
@@ -71,7 +79,7 @@ export default function PartnerApplication() {
   const loadApplications = async () => {
     setLoading(true);
     try {
-      const response = await http.get('/api/partner-applications/mine');
+      const response = await http.get('/api/partner-applications/my-applications');
       setApplications(unwrapList(response.data));
     } catch (err) {
       // Một số Backend có thể trả 404 khi người dùng chưa từng gửi hồ sơ.
@@ -101,9 +109,25 @@ export default function PartnerApplication() {
     ['PENDING', 'PENDING_REVIEW', 'SUBMITTED'].includes(normalizedStatus(item))
   );
 
+  const isApproved = applications.some((item) => normalizedStatus(item) === 'APPROVED');
+
+  // Admin đã duyệt: quyền ROLE_PARTNER có hiệu lực ngay ở backend (đọc từ DB mỗi request),
+  // nhưng thông tin user lưu trong trình duyệt vẫn là Traveller -> cập nhật để vào được Partner Portal.
+  useEffect(() => {
+    if (!isApproved) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem('user') || 'null');
+      if (saved && saved.role !== 'ROLE_PARTNER') {
+        localStorage.setItem('user', JSON.stringify({ ...saved, role: 'ROLE_PARTNER' }));
+      }
+    } catch {
+      // localStorage hỏng: bỏ qua, người dùng đăng nhập lại là xong.
+    }
+  }, [isApproved]);
+
   const submitApplication = async (event) => {
     event.preventDefault();
-    if (hasPending) return;
+    if (hasPending || isApproved) return;
 
     setSubmitting(true);
     setError('');
@@ -113,6 +137,8 @@ export default function PartnerApplication() {
       const payload = Object.fromEntries(
         Object.entries(form).map(([key, value]) => [key, value.trim() || null])
       );
+      payload.taxCode = payload.taxCode ? compact(payload.taxCode) : null;
+      payload.contactPhone = payload.contactPhone ? compact(payload.contactPhone) : null;
 
       await http.post('/api/partner-applications', payload);
       setSuccess('Hồ sơ đã được gửi thành công. Bạn có thể theo dõi tiến độ xét duyệt ở phần bên dưới.');
@@ -127,6 +153,12 @@ export default function PartnerApplication() {
 
   return (
     <div className="portal-page partner-application-page partner-application-refresh">
+      <nav style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16, fontSize: 14, fontWeight: 600 }}>
+        <Link to="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#64748b' }}>
+          <ArrowLeft size={16} /> Trang chủ
+        </Link>
+        <Link to="/tro-thanh-doi-tac" style={{ color: '#64748b' }}>Điều kiện &amp; quy trình</Link>
+      </nav>
       <section className="partner-app-hero">
         <div className="partner-app-hero-copy">
           <div className="partner-app-kicker">
@@ -176,6 +208,17 @@ export default function PartnerApplication() {
         </div>
       )}
 
+      {isApproved && (
+        <div className="partner-app-feedback is-success" role="status">
+          <CheckCircle2 size={20} />
+          <span>
+            Hồ sơ đối tác của bạn đã được duyệt.{' '}
+            <Link to="/partner" style={{ fontWeight: 700, textDecoration: 'underline' }}>Vào Partner Portal</Link>
+            {' '}để thêm địa điểm. Nếu trang báo không có quyền, hãy đăng xuất rồi đăng nhập lại.
+          </span>
+        </div>
+      )}
+
       {hasPending && (
         <div className="partner-app-pending-banner">
           <div className="partner-app-pending-icon"><Clock3 size={21} /></div>
@@ -222,9 +265,10 @@ export default function PartnerApplication() {
                   <small>Tên sẽ được dùng để nhận diện hồ sơ của bạn.</small>
                 </label>
                 <label className="partner-app-field">
-                  <span>Tên pháp lý</span>
+                  <span>Tên pháp lý <b>*</b></span>
                   <input
                     name="legalName"
+                    required
                     maxLength={255}
                     value={form.legalName}
                     onChange={changeField}
@@ -233,14 +277,19 @@ export default function PartnerApplication() {
                   />
                 </label>
                 <label className="partner-app-field">
-                  <span>Mã số thuế</span>
+                  <span>Mã số thuế <b>*</b></span>
                   <input
                     name="taxCode"
+                    required
                     maxLength={50}
+                    inputMode="numeric"
                     value={form.taxCode}
-                    onChange={changeField}
-                    placeholder="Nhập mã số thuế nếu có"
+                    onChange={(e) => setForm((f) => ({ ...f, taxCode: compact(e.target.value) }))}
+                    pattern={TAX_CODE_PATTERN}
+                    title="10 số, 10 số kèm -3 số của chi nhánh (vd. 0312345678-001), hoặc 12 số"
+                    placeholder="Ví dụ: 0312345678"
                   />
+                  <small>Admin sẽ đối chiếu mã số thuế với tên pháp lý khi xét duyệt.</small>
                 </label>
                 <label className="partner-app-field partner-app-field-full">
                   <span>Địa chỉ đơn vị <b>*</b></span>
@@ -272,11 +321,12 @@ export default function PartnerApplication() {
               </div>
               <div className="partner-app-fields">
                 <label className="partner-app-field">
-                  <span>Người liên hệ</span>
+                  <span>Người liên hệ <b>*</b></span>
                   <div className="partner-app-input-with-icon">
                     <UserRound size={18} />
                     <input
                       name="contactPerson"
+                      required
                       maxLength={150}
                       value={form.contactPerson}
                       onChange={changeField}
@@ -286,10 +336,11 @@ export default function PartnerApplication() {
                   </div>
                 </label>
                 <label className="partner-app-field">
-                  <span>Số điện thoại</span>
+                  <span>Số điện thoại <b>*</b></span>
                   <input
                     name="contactPhone"
                     type="tel"
+                    required
                     maxLength={20}
                     value={form.contactPhone}
                     onChange={changeField}
@@ -346,10 +397,10 @@ export default function PartnerApplication() {
 
             <div className="partner-app-submit-row">
               <span className="partner-app-submit-caption">Các trường có dấu * là bắt buộc.</span>
-              <button className="partner-app-submit-button" type="submit" disabled={submitting || hasPending}>
+              <button className="partner-app-submit-button" type="submit" disabled={submitting || hasPending || isApproved}>
                 {submitting ? <LoaderCircle size={19} className="portal-spin" /> : <Send size={18} />}
-                {submitting ? 'Đang gửi hồ sơ...' : hasPending ? 'Đang chờ xét duyệt' : 'Gửi hồ sơ xét duyệt'}
-                {!submitting && !hasPending && <ArrowRight size={18} />}
+                {submitting ? 'Đang gửi hồ sơ...' : isApproved ? 'Đã là đối tác' : hasPending ? 'Đang chờ xét duyệt' : 'Gửi hồ sơ xét duyệt'}
+                {!submitting && !hasPending && !isApproved && <ArrowRight size={18} />}
               </button>
             </div>
           </form>

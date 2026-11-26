@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Settings, LogOut } from 'lucide-react';
+import { User, Settings, LogOut, Store, ShieldCheck } from 'lucide-react';
+import { normalizeRole } from '../utils/auth.jsx';
 
 const UserMenu = ({ user, onLogout }) => {
   const navigate = useNavigate();
@@ -69,6 +70,21 @@ const UserMenu = ({ user, onLogout }) => {
             <Settings className="h-4 w-4 text-slate-500" />
             Chỉnh sửa thông tin
           </Link>
+          {/* Lối vào khu vực đối tác / quản trị theo vai trò */}
+          {(() => {
+            const role = normalizeRole(user?.role);
+            const entry = role === 'ROLE_PARTNER'
+              ? { to: '/partner', label: 'Partner Portal', Icon: Store }
+              : role === 'ROLE_ADMIN'
+                ? { to: '/admin', label: 'Trang quản trị', Icon: ShieldCheck }
+                : { to: '/tro-thanh-doi-tac', label: 'Đăng ký làm đối tác', Icon: Store };
+            return (
+              <Link to={entry.to} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
+                <entry.Icon className="h-4 w-4 text-slate-500" />
+                {entry.label}
+              </Link>
+            );
+          })()}
           <div className="my-1 border-t border-slate-100" />
           <button
             type="button"

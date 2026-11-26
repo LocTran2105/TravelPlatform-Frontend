@@ -43,6 +43,12 @@ export const describeActivity = (item) => {
       return `đã đánh dấu ${quote(label)} là đã ghé thăm`;
     case 'DESTINATION_UNVISITED':
       return `đã bỏ đánh dấu đã ghé thăm ${quote(label)}`;
+    case 'DESTINATION_MOVED':
+      return `đã chuyển ${quote(label)}${detail ? ` sang ${viDay(detail)}` : ' sang ngày khác'}`;
+    case 'ITINERARY_REORDERED':
+      return detail && /^Day\s/i.test(detail)
+        ? `đã sắp xếp lại thứ tự ${viDay(detail)}`
+        : `đã sắp xếp lại lịch trình${detail ? ` (${detail})` : ''}`;
     case 'DESTINATION_REMOVED':
       return `đã xóa địa điểm ${quote(label)}${detail ? ` khỏi ${viDay(detail)}` : ''}`;
     case 'EXPENSE_ADDED':

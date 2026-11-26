@@ -145,6 +145,9 @@ const Home = () => {
               <Link to="/community" className="rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900">
                 Cộng đồng
               </Link>
+              <Link to="/tro-thanh-doi-tac" className="rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900">
+                Dành cho đối tác
+              </Link>
             </nav>
           </div>
 
@@ -314,7 +317,13 @@ const Home = () => {
       </section>
 
       <footer className="border-t border-slate-100 px-6 py-10 text-center text-sm font-medium text-slate-400">
-        © 2026 TravelPlatform. Khám phá thế giới theo cách của bạn.
+        <p>© 2026 TravelPlatform. Khám phá thế giới theo cách của bạn.</p>
+        <p className="mt-2">
+          Bạn kinh doanh quán ăn, lưu trú hay điểm tham quan?{' '}
+          <Link to="/tro-thanh-doi-tac" className="font-semibold text-[#FF5645] hover:underline">
+            Trở thành đối tác
+          </Link>
+        </p>
       </footer>
 
       {/* Hộp thoại xác nhận xóa / báo lỗi và modal chia sẻ */}

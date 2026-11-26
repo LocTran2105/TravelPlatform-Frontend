@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, Marker, Popup, TileLayer, useMapEvents } from 'react-leaflet';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { MapContainer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
   Check, Eye, FileCheck2, Image as ImageIcon, LoaderCircle,
-  MapPin, RefreshCw, X, Search, LocateFixed, ExternalLink,
+  MapPin, RefreshCw, X, Search, LocateFixed, ExternalLink, Undo2, RotateCcw,
 } from 'lucide-react';
 import { adminApi } from '../../api/adminApi';
+import ResilientTileLayer from '../../components/ResilientTileLayer';
 import { getApiError } from '../../api/axiosClient';
 
 const listOf = (data) => Array.isArray(data)
@@ -44,14 +45,48 @@ const typeName = (type) => ({
   ATTRACTION: 'Điểm tham quan', TOURIST_SITE: 'Khu du lịch', SPA: 'Spa', SHOP: 'Cửa hàng', OTHER: 'Khác',
 })[type] || type || '—';
 
-const makePin = (letter, color) => L.divIcon({
+// Ghim dạng giọt nước vẽ bằng SVG: mũi nhọn nằm ĐÚNG giữa đáy icon (14, 38) nên iconAnchor trùng tọa độ thật.
+// (Bản cũ xoay một ô vuông 45°, mũi nhọn rơi thấp hơn điểm neo ~10px -> marker trông lệch so với OpenStreetMap.)
+const PIN_W = 28;
+const PIN_H = 38;
+const makePin = (letter, color, opacity = 1) => L.divIcon({
   className: 'admin-map-div-icon',
-  html: `<div style="width:28px;height:28px;border:2px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:${color};box-shadow:0 2px 8px #0005;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:11px"><span style="transform:rotate(45deg)">${letter}</span></div>`,
-  iconSize: [28, 28],
-  iconAnchor: [14, 28],
+  html: `<svg width="${PIN_W}" height="${PIN_H}" viewBox="0 0 28 38" style="display:block;opacity:${opacity};filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))">
+    <path d="M14 37 C14 37 2 22.5 2 14 A12 12 0 0 1 26 14 C26 22.5 14 37 14 37 Z" fill="${color}" stroke="#fff" stroke-width="2"/>
+    <text x="14" y="18.5" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" font-weight="800" fill="#fff">${letter}</text>
+  </svg>`,
+  iconSize: [PIN_W, PIN_H],
+  iconAnchor: [PIN_W / 2, PIN_H],   // mũi nhọn
+  popupAnchor: [0, -PIN_H + 4],
 });
 const partnerPin = makePin('P', '#2563eb');
+const originalPin = makePin('G', '#64748b', 0.75); // vị trí gốc Partner gửi (khi Admin đã dời marker)
 const osmPin = makePin('O', '#7c3aed');
+
+// Khoảng cách (mét) giữa 2 tọa độ, để báo Admin đã dời marker bao xa so với vị trí Partner gửi.
+const distanceMeters = (a, b) => {
+  const toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(h));
+};
+
+// Chỉ dời bản đồ khi marker nằm NGOÀI khung nhìn (vd. Admin gõ tọa độ mới / hoàn tác về điểm xa).
+// Nhấn lên bản đồ thì marker luôn trong khung -> bản đồ đứng yên, giữ nguyên mức zoom.
+function KeepMarkerInView({ position }) {
+  const map = useMap();
+  const lat = position?.[0];
+  const lng = position?.[1];
+  useEffect(() => {
+    if (lat == null || lng == null) return;
+    const point = L.latLng(lat, lng);
+    if (!map.getBounds().pad(-0.1).contains(point)) {
+      map.panTo(point, { animate: true });
+    }
+  }, [lat, lng, map]);
+  return null;
+}
 
 function MapClickPicker({ enabled, onPick }) {
   useMapEvents({
@@ -63,19 +98,37 @@ function MapClickPicker({ enabled, onPick }) {
 }
 
 function AdminDecisionMap({
-  center, partnerPosition, candidates,
+  center, partnerPosition, originalPosition, candidates,
   placeMode, onSelectOsm, onPickPartner,
 }) {
+  const showOriginal = originalPosition && partnerPosition
+    && distanceMeters(originalPosition, partnerPosition) >= 1;
   return (
-    <MapContainer center={center} zoom={15} scrollWheelZoom style={{ width: '100%', height: 360, borderRadius: 12, zIndex: 0 }}>
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+    <MapContainer center={center} zoom={17} scrollWheelZoom style={{ width: '100%', height: 360, borderRadius: 12, zIndex: 0 }}>
+      {/* Ảnh vệ tinh giúp Admin thấy mái nhà/lối vào thật để đặt ghim; chế độ "Bản đồ" dùng OSM để đối chiếu POI */}
+      <ResilientTileLayer preset="osm" />
       <MapClickPicker enabled={placeMode === 'PARTNER'} onPick={onPickPartner} />
+      <KeepMarkerInView position={partnerPosition} />
+      {showOriginal && (
+        <Marker position={originalPosition} icon={originalPin} zIndexOffset={-100}>
+          <Popup>Vị trí gốc Partner gửi</Popup>
+        </Marker>
+      )}
       {partnerPosition && (
-        <Marker position={partnerPosition} icon={partnerPin}>
-          <Popup>Vị trí Partner gửi / vị trí Admin xác nhận</Popup>
+        <Marker
+          position={partnerPosition}
+          icon={partnerPin}
+          zIndexOffset={100}
+          // Ở chế độ PARTNER có thể kéo marker để tinh chỉnh từng chút thay vì nhấn lại nhiều lần.
+          draggable={placeMode === 'PARTNER'}
+          eventHandlers={{
+            dragend: (event) => {
+              const { lat, lng } = event.target.getLatLng();
+              onPickPartner(lat, lng);
+            },
+          }}
+        >
+          <Popup>{placeMode === 'PARTNER' ? 'Vị trí Admin xác nhận (kéo để chỉnh)' : 'Vị trí Partner gửi'}</Popup>
         </Marker>
       )}
       {candidates.map((candidate) => {
@@ -124,6 +177,23 @@ export default function AdminSubmissions() {
   const [selectedOsmPlaceId, setSelectedOsmPlaceId] = useState('');
   const [partnerLatitude, setPartnerLatitude] = useState('');
   const [partnerLongitude, setPartnerLongitude] = useState('');
+  // Lịch sử các vị trí Admin đã đặt (để Hoàn tác / Ctrl+Z) và vị trí gốc Partner gửi.
+  const [positionHistory, setPositionHistory] = useState([]);
+  const [originalPosition, setOriginalPosition] = useState(null);
+  const positionRef = useRef({ lat: '', lng: '' });
+  useEffect(() => {
+    positionRef.current = { lat: partnerLatitude, lng: partnerLongitude };
+  }, [partnerLatitude, partnerLongitude]);
+
+  // Ghi một vị trí vào lịch sử (bỏ qua nếu trùng bước gần nhất), tối đa 50 bước.
+  const pushHistory = (position) => {
+    if (!position || position.lat === '' || position.lng === '') return;
+    setPositionHistory((history) => {
+      const last = history[history.length - 1];
+      if (last && last.lat === position.lat && last.lng === position.lng) return history;
+      return [...history.slice(-49), position];
+    });
+  };
 
   const selectedSnapshot = useMemo(() => safeSnapshot(selected?.submissionData), [selected]);
   const selectedStatus = String(selected?.status || '').toUpperCase();
@@ -167,6 +237,10 @@ export default function AdminSubmissions() {
     setReviewNote(row.reviewNote || '');
     setPartnerLatitude(snapshot.latitude == null ? '' : String(snapshot.latitude));
     setPartnerLongitude(snapshot.longitude == null ? '' : String(snapshot.longitude));
+    setPositionHistory([]);
+    setOriginalPosition(snapshot.latitude == null || snapshot.longitude == null
+      ? null
+      : { lat: String(snapshot.latitude), lng: String(snapshot.longitude) });
     setPlaceMode('');
     setSelectedOsmPlaceId('');
     setOsmCandidates([]);
@@ -177,6 +251,44 @@ export default function AdminSubmissions() {
       loadOsmCandidates(row.id);
     }
   };
+
+  // Đặt vị trí mới và ghi vị trí cũ vào lịch sử (tối đa 50 bước).
+  const setPartnerPosition = (lat, lng) => {
+    const current = positionRef.current;
+    const next = { lat: String(lat), lng: String(lng) };
+    if (current.lat === next.lat && current.lng === next.lng) return;
+    pushHistory(current);
+    setPartnerLatitude(next.lat);
+    setPartnerLongitude(next.lng);
+  };
+
+  const undoPartnerPosition = () => {
+    const previous = positionHistory[positionHistory.length - 1];
+    if (!previous) return;
+    setPositionHistory(positionHistory.slice(0, -1));
+    setPartnerLatitude(previous.lat);
+    setPartnerLongitude(previous.lng);
+  };
+
+  const resetToOriginalPosition = () => {
+    if (originalPosition) setPartnerPosition(originalPosition.lat, originalPosition.lng);
+  };
+
+  // Ctrl+Z / Cmd+Z khi đang chỉnh vị trí PARTNER. Bỏ qua khi con trỏ đang trong ô nhập (để ô nhập tự hoàn tác chữ).
+  const undoRef = useRef(undoPartnerPosition);
+  useEffect(() => { undoRef.current = undoPartnerPosition; });
+  useEffect(() => {
+    if (!selected || placeMode !== 'PARTNER') return undefined;
+    const onKeyDown = (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== 'z') return;
+      const tag = event.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || event.target?.isContentEditable) return;
+      event.preventDefault();
+      undoRef.current();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selected, placeMode]);
 
   const review = async (row, action) => {
     const note = reviewNote.trim();
@@ -423,7 +535,16 @@ export default function AdminSubmissions() {
                     <>
                       <strong style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>POI OSM tìm được ({osmCandidates.length})</strong>
                       {osmLoading ? <div className="portal-empty" style={{ minHeight: 100 }}>Đang truy vấn Overpass...</div>
-                        : osmCandidates.length === 0 ? <div className="portal-alert warning">Không tìm thấy POI OSM phù hợp trong bán kính tìm kiếm. Chuyển sang “Tạo Place PARTNER” để dùng vị trí Admin xác nhận.</div>
+                        : osmCandidates.length === 0 ? (
+                          <div className="portal-alert warning">
+                            {osmError ? 'Chưa kiểm tra được POI OSM (xem thông báo phía trên).' : 'Không tìm thấy POI OSM phù hợp trong bán kính tìm kiếm.'}
+                            {' '}Nếu đã xác minh vị trí, hãy dùng Place PARTNER.
+                            <button type="button" className="portal-secondary-button" style={{ marginTop: 8 }}
+                              onClick={() => { setPlaceMode('PARTNER'); setSelectedOsmPlaceId(''); }}>
+                              <LocateFixed size={15} /> Chuyển sang Tạo Place PARTNER
+                            </button>
+                          </div>
+                        )
                           : <div style={{ display: 'grid', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
                             {osmCandidates.map((candidate) => {
                               const active = String(selectedOsmPlaceId) === String(candidate.id);
@@ -447,15 +568,40 @@ export default function AdminSubmissions() {
                       <label className="portal-field" style={{ marginBottom: 9 }}>
                         <span>Latitude</span>
                         <input type="number" step="any" min="-90" max="90" value={partnerLatitude}
+                          onFocus={() => pushHistory(positionRef.current)}
                           onChange={(event) => setPartnerLatitude(event.target.value)} placeholder="Latitude" />
                       </label>
                       <label className="portal-field" style={{ marginBottom: 9 }}>
                         <span>Longitude</span>
                         <input type="number" step="any" min="-180" max="180" value={partnerLongitude}
+                          onFocus={() => pushHistory(positionRef.current)}
                           onChange={(event) => setPartnerLongitude(event.target.value)} placeholder="Longitude" />
                       </label>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 10px' }}>
+                        <button type="button" className="portal-secondary-button" onClick={undoPartnerPosition}
+                          disabled={positionHistory.length === 0} title="Hoàn tác (Ctrl+Z)">
+                          <Undo2 size={15} /> Hoàn tác{positionHistory.length > 0 ? ` (${positionHistory.length})` : ''}
+                        </button>
+                        <button type="button" className="portal-secondary-button" onClick={resetToOriginalPosition}
+                          disabled={!originalPosition
+                            || (originalPosition.lat === partnerLatitude && originalPosition.lng === partnerLongitude)}>
+                          <RotateCcw size={15} /> Về vị trí Partner gửi
+                        </button>
+                      </div>
+                      {(() => {
+                        const lat = Number(partnerLatitude);
+                        const lng = Number(partnerLongitude);
+                        if (!originalPosition || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                        const moved = distanceMeters([Number(originalPosition.lat), Number(originalPosition.lng)], [lat, lng]);
+                        return moved >= 1 ? (
+                          <p style={{ color: '#1e40af', fontSize: 12, margin: '0 0 8px' }}>
+                            Đã dời <strong>{Math.round(moved)} m</strong> so với vị trí Partner gửi (ghim xám G).
+                          </p>
+                        ) : null;
+                      })()}
                       <p style={{ color: '#64748b', fontSize: 11, lineHeight: 1.5 }}>
-                        Nhấn lên bản đồ để đặt lại marker. Tọa độ này sẽ được lưu trên Place PARTNER; tọa độ OSM không bị sửa.
+                        Nhấn lên bản đồ hoặc kéo ghim P để chỉnh vị trí; Ctrl+Z để hoàn tác.
+                        Tọa độ này được lưu trên Place PARTNER; tọa độ OSM không bị sửa.
                       </p>
                     </>
                   ) : (
@@ -477,16 +623,15 @@ export default function AdminSubmissions() {
                     return center ? (
                       <>
                         <AdminDecisionMap
-                          key={`${selected.id}-${center[0]}-${center[1]}`}
+                          // Key chỉ theo hồ sơ: đổi tọa độ KHÔNG tạo lại bản đồ (trước đây mỗi lần nhấn bản đồ bị reset zoom).
+                          key={selected.id}
                           center={center}
                           partnerPosition={partnerValid ? [lat, lng] : null}
+                          originalPosition={originalPosition ? [Number(originalPosition.lat), Number(originalPosition.lng)] : null}
                           candidates={osmCandidates}
                           placeMode={placeMode}
                           onSelectOsm={(id) => { setSelectedOsmPlaceId(String(id)); setPlaceMode('OSM'); }}
-                          onPickPartner={(pickedLat, pickedLng) => {
-                            setPartnerLatitude(pickedLat.toFixed(7));
-                            setPartnerLongitude(pickedLng.toFixed(7));
-                          }}
+                          onPickPartner={(pickedLat, pickedLng) => setPartnerPosition(pickedLat.toFixed(7), pickedLng.toFixed(7))}
                         />
                         {partnerValid && (
                           <a className="portal-inline-link" style={{ marginTop: 8 }} target="_blank" rel="noreferrer"
@@ -560,6 +705,14 @@ export default function AdminSubmissions() {
                   <span>Ghi chú cho Partner (không bắt buộc khi duyệt, bắt buộc khi từ chối)</span>
                   <textarea rows={3} value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="Nhập phản hồi hoặc yêu cầu cập nhật thông tin..." />
                 </label>
+                {/* Lỗi phải hiện NGAY TRONG hộp thoại; thông báo ở đầu trang bị hộp thoại che mất. */}
+                {error && <div className="portal-alert error" style={{ marginTop: 10 }}>{error}</div>}
+                {!error && (placeMode === '' || (placeMode === 'OSM' && !selectedOsmPlaceId)) && (
+                  <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
+                    {placeMode === '' ? 'Chọn “Liên kết OSM” hoặc “Tạo Place PARTNER” trước khi phê duyệt.'
+                      : 'Chọn một POI OSM trong danh sách/bản đồ, hoặc chuyển sang “Tạo Place PARTNER”.'}
+                  </p>
+                )}
                 <div className="portal-modal-actions">
                   <button type="button" className="portal-secondary-button" onClick={() => setSelected(null)} disabled={Boolean(busyId)}>Đóng</button>
                   <button type="button" className="portal-secondary-button" onClick={() => review(selected, 'reject')} disabled={Boolean(busyId)}>
