@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -6,7 +5,7 @@ import {
   Navigate,
 } from 'react-router-dom';
 
-import axiosClient from './api/axiosClient';
+import useRoleSync from './utils/useRoleSync';
 import Toaster from './components/Toaster';
 
 // Traveller
@@ -21,6 +20,7 @@ import Community from './components/Community';
 import PublicProfile from './components/PublicProfile';
 import InvitePage from './components/InvitePage';
 import SharePage from './components/SharePage';
+import Notifications from './pages/Notifications';
 
 // Phân quyền và Layout
 import ProtectedRoute from './routes/ProtectedRoute';
@@ -41,21 +41,21 @@ import AdminSubmissions from './pages/admin/AdminSubmissions';
 import AdminBusinesses from './pages/admin/AdminBusinesses';
 
 // CSS
-import './styles/portal.css';
 import './styles/partner-admin.css';
+import './styles/portal.css';
 
+//Report
+import ModeratorLayout from './layouts/ModeratorLayout';
+import ModerationDashboard from './pages/moderator/ModerationDashboard';
+import ModerationQueue from './pages/moderator/ModerationQueue';
+import ModerationDetail from './pages/moderator/ModerationDetail';
+import ModerationHistory from './pages/moderator/ModerationHistory';
+
+import AdminModerators from './pages/admin/AdminModerators';
 
 function App() {
-  // Kiểm tra JWT khi mở ứng dụng
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-
-    if (token) {
-      axiosClient.get('/api/users/profile').catch(() => {
-        // axiosClient xử lý trường hợp 401.
-      });
-    }
-  }, []);
+  // Kiểm tra JWT và đồng bộ vai trò (cấp/thu hồi quyền) khi mở ứng dụng
+  useRoleSync();
 
   return (
     <BrowserRouter>
@@ -87,6 +87,9 @@ function App() {
         {/* Mở link chia sẻ chuyến đi (nút Share) */}
         <Route path="/share/:token" element={<SharePage />} />
         <Route path="/community" element={<Community />} />
+
+        {/* Thông báo (trang tự chuyển về /login nếu chưa đăng nhập) */}
+        <Route path="/notifications" element={<Notifications />} />
 
 
         {/* ================= PARTNER APPLICATION ================= */}
@@ -151,6 +154,39 @@ function App() {
           <Route
             path="/admin/businesses"
             element={<AdminBusinesses />}
+          />
+
+          <Route
+            path="/admin/moderators"
+            element={<AdminModerators />}
+          />
+        </Route>
+
+
+        {/* ================= MODERATOR PORTAL ================= */}
+
+        <Route
+          element={
+            <ProtectedRoute allowedRoles={['ROLE_MODERATOR', 'ROLE_ADMIN']}>
+              <ModeratorLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/moderation" element={<ModerationDashboard />} />
+
+          <Route
+            path="/moderation/queue"
+            element={<ModerationQueue />}
+          />
+
+          <Route
+            path="/moderation/content/:type/:id"
+            element={<ModerationDetail />}
+          />
+
+          <Route
+            path="/moderation/history"
+            element={<ModerationHistory />}
           />
         </Route>
 

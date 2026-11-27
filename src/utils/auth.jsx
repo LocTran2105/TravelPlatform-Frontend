@@ -13,6 +13,7 @@ export function normalizeRole(role) {
 
   if (value === 'PARTNER') return 'ROLE_PARTNER';
   if (value === 'ADMIN') return 'ROLE_ADMIN';
+  if (value === 'MODERATOR') return 'ROLE_MODERATOR';
 
   return `ROLE_${value}`;
 }
@@ -24,6 +25,9 @@ export function getHomePathForRole(role) {
 
     case 'ROLE_PARTNER':
       return '/partner';
+
+    case 'ROLE_MODERATOR':
+      return '/moderation';
 
     default:
       return '/home';

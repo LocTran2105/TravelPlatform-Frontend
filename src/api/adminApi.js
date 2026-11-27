@@ -6,6 +6,7 @@ export const ADMIN_ENDPOINTS = {
   applications: '/api/admin/partner-applications',
   businessSubmissions: '/api/admin/partner-submissions',
   businesses: '/api/admin/businesses',
+  moderators: '/api/admin/moderators',
 };
 
 export const adminApi = {
@@ -89,6 +90,28 @@ export const adminApi = {
   updateBusinessLocation: (id, location) =>
     axiosClient
       .put(`${ADMIN_ENDPOINTS.businesses}/${id}/location`, location)
+      .then((response) => response.data),
+
+  // Quản lý kiểm duyệt viên (chỉ ADMIN).
+  getModerators: () =>
+    axiosClient
+      .get(ADMIN_ENDPOINTS.moderators)
+      .then((response) => response.data),
+
+  // Gợi ý người dùng thường đang hoạt động để cấp quyền (từ khóa tối thiểu 2 ký tự).
+  searchModeratorCandidates: (q) =>
+    axiosClient
+      .get(`${ADMIN_ENDPOINTS.moderators}/candidates`, { params: { q } })
+      .then((response) => response.data),
+
+  grantModerator: (userId) =>
+    axiosClient
+      .post(ADMIN_ENDPOINTS.moderators, { userId })
+      .then((response) => response.data),
+
+  revokeModerator: (userId) =>
+    axiosClient
+      .delete(`${ADMIN_ENDPOINTS.moderators}/${userId}`)
       .then((response) => response.data),
 };
 

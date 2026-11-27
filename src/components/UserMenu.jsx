@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Settings, LogOut, Store, ShieldCheck } from 'lucide-react';
+import { User, Settings, LogOut, Store, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { normalizeRole } from '../utils/auth.jsx';
+import NotificationBell from './NotificationBell';
 
 const UserMenu = ({ user, onLogout }) => {
   const navigate = useNavigate();
@@ -41,6 +42,8 @@ const UserMenu = ({ user, onLogout }) => {
     'flex w-full items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50';
 
   return (
+    <div className="flex items-center gap-1.5">
+    <NotificationBell />
     <div className="relative" ref={wrapperRef}>
       <button
         type="button"
@@ -70,20 +73,23 @@ const UserMenu = ({ user, onLogout }) => {
             <Settings className="h-4 w-4 text-slate-500" />
             Chỉnh sửa thông tin
           </Link>
-          {/* Lối vào khu vực đối tác / quản trị theo vai trò */}
+          {/* Lối vào khu vực đối tác / quản trị / kiểm duyệt theo vai trò */}
           {(() => {
             const role = normalizeRole(user?.role);
-            const entry = role === 'ROLE_PARTNER'
-              ? { to: '/partner', label: 'Partner Portal', Icon: Store }
+            const moderationEntry = { to: '/moderation', label: 'Khu kiểm duyệt', Icon: ShieldAlert };
+            const entries = role === 'ROLE_PARTNER'
+              ? [{ to: '/partner', label: 'Partner Portal', Icon: Store }]
               : role === 'ROLE_ADMIN'
-                ? { to: '/admin', label: 'Trang quản trị', Icon: ShieldCheck }
-                : { to: '/tro-thanh-doi-tac', label: 'Đăng ký làm đối tác', Icon: Store };
-            return (
-              <Link to={entry.to} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
+                ? [{ to: '/admin', label: 'Trang quản trị', Icon: ShieldCheck }, moderationEntry]
+                : role === 'ROLE_MODERATOR'
+                  ? [moderationEntry]
+                  : [{ to: '/tro-thanh-doi-tac', label: 'Đăng ký làm đối tác', Icon: Store }];
+            return entries.map((entry) => (
+              <Link key={entry.to} to={entry.to} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
                 <entry.Icon className="h-4 w-4 text-slate-500" />
                 {entry.label}
               </Link>
-            );
+            ));
           })()}
           <div className="my-1 border-t border-slate-100" />
           <button
@@ -97,6 +103,7 @@ const UserMenu = ({ user, onLogout }) => {
           </button>
         </div>
       )}
+    </div>
     </div>
   );
 };
