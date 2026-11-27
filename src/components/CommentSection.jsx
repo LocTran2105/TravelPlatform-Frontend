@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { Send, CornerDownRight } from 'lucide-react';
 import ReportDialog from './ReportDialog';
+import { API_BASE_URL } from '../config/api';
 
-const API = 'http://localhost:8080/api/posts';
+const API = `${API_BASE_URL}/api/posts`;
 const MAX_LENGTH = 1000; // khớp CommentService.MAX_CONTENT_LENGTH ở backend
 
 // Khách chưa đăng nhập thì KHÔNG gửi header (trước đây gửi "Bearer null").

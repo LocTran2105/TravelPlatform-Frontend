@@ -4,6 +4,7 @@ import axios from 'axios';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { Calendar, Users, ChevronDown, X, Compass, MapPin, AlertCircle  } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -189,7 +190,7 @@ const PlanTrip = () => {
         companionEmails: finalCompanionEmails,
       };
 
-      const response = await axios.post('http://localhost:8080/api/trips', payload, {
+      const response = await axios.post(`${API_BASE_URL}/api/trips`, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

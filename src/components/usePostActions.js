@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api';
 
-const API = 'http://localhost:8080/api';
+const API = `${API_BASE_URL}/api`;
 
 /**
  * Thao tác với bài viết trong danh sách của trang cá nhân: thả / bỏ tim (cập nhật ngay, lỗi thì hoàn lại)

@@ -14,8 +14,9 @@ import {
   Send,
   AlertCircle,
 } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
-const API = 'http://localhost:8080';
+const API = API_BASE_URL;
 
 // Trùng với kiểm tra ở trang PlanTrip; server kiểm tra lại chặt hơn một lần nữa
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

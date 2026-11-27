@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, MapPinned, FileClock, ClipboardCheck, Building2,
-  ShieldCheck, LogOut, Menu, X, Compass, Home,
+  ShieldCheck, LogOut, Menu, X, Compass, Home, Store,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -24,6 +24,7 @@ const PORTALS = {
       { to: '/admin', label: 'Tổng quan', icon: LayoutDashboard, end: true },
       { to: '/admin/applications', label: 'Đơn đăng ký Partner', icon: ClipboardCheck },
       { to: '/admin/submissions', label: 'Duyệt địa điểm', icon: Building2 },
+      { to: '/admin/businesses', label: 'Quản lý địa điểm', icon: Store },
     ],
   },
 };

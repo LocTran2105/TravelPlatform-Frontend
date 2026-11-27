@@ -15,6 +15,7 @@ import {
 import { GoogleLogin } from '@react-oauth/google';
 import { getHomePathForRole, normalizeRole } from '../utils/auth';
 import { getSafeRedirect, withRedirect } from '../utils/redirect';
+import { API_BASE_URL } from '../config/api';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -65,7 +66,7 @@ const Login = () => {
 
     try {
       // Gọi API login của backend Spring Boot
-      const response = await axios.post('http://localhost:8080/api/auth/login', {
+      const response = await axios.post(`${API_BASE_URL}/api/auth/login`, {
         email: trimmedEmail,
         password: password,
       });
@@ -121,7 +122,7 @@ const Login = () => {
           setErrorMessage(`Máy chủ phản hồi lỗi (${error.response.status}). Vui lòng thử lại sau.`);
         }
       } else if (error.request) {
-        setErrorMessage('Không thể kết nối tới máy chủ backend (http://localhost:8080). Hãy đảm bảo Backend đang chạy.');
+        setErrorMessage(`Không thể kết nối tới máy chủ backend (${API_BASE_URL}). Hãy đảm bảo Backend đang chạy.`);
       } else {
         setErrorMessage('Đã xảy ra sự cố ngoài ý muốn. Vui lòng thử lại.');
       }
@@ -136,7 +137,7 @@ const Login = () => {
       const googleToken = credentialResponse.credential;
 
       const response = await axios.post(
-        'http://localhost:8080/api/auth/google',
+        `${API_BASE_URL}/api/auth/google`,
         {
           token: googleToken,
         }
@@ -197,7 +198,7 @@ const Login = () => {
 
     try {
       // Gọi API thực tế
-      await axios.post(`http://localhost:8080/api/auth/forgot-password?email=${forgotEmail}`);
+      await axios.post(`${API_BASE_URL}/api/auth/forgot-password?email=${forgotEmail}`);
       
       setForgotStatus({
         loading: false,

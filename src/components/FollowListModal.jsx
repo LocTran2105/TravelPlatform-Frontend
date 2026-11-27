@@ -3,6 +3,7 @@ import { X, User, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import FollowButton from './FollowButton'; // Bắt buộc phải import FollowButton
+import { API_BASE_URL } from '../config/api';
 
 const FollowListModal = ({ isOpen, onClose, title, type, list, currentUser, profileUsername, onListUpdate }) => {
   const navigate = useNavigate();
@@ -27,7 +28,7 @@ const FollowListModal = ({ isOpen, onClose, title, type, list, currentUser, prof
     try {
       setLoadingIds(prev => [...prev, followerId]);
       await axios.delete(
-        `http://localhost:8080/api/social/users/${encodeURIComponent(followerUsername)}/remove-follower`, 
+        `${API_BASE_URL}/api/social/users/${encodeURIComponent(followerUsername)}/remove-follower`, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (onListUpdate) onListUpdate('remove_follower', followerId);
@@ -46,7 +47,7 @@ const FollowListModal = ({ isOpen, onClose, title, type, list, currentUser, prof
     try {
       setLoadingIds(prev => [...prev, targetId]);
       await axios.delete(
-        `http://localhost:8080/api/social/users/${encodeURIComponent(targetUsername)}/follow`,
+        `${API_BASE_URL}/api/social/users/${encodeURIComponent(targetUsername)}/follow`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (onListUpdate) onListUpdate('toggle_following', targetId);

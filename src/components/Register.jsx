@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { getSafeRedirect, withRedirect } from '../utils/redirect';
+import { API_BASE_URL } from '../config/api';
 
 const Register = () => {
   const navigate = useNavigate();
@@ -60,7 +61,7 @@ const Register = () => {
 
     try {
       // Gọi API Spring Boot
-      await axios.post('http://localhost:8080/api/auth/register', {
+      await axios.post(`${API_BASE_URL}/api/auth/register`, {
         fullName: formData.fullName,
         email: formData.email,
         phoneNumber: formData.phoneNumber,

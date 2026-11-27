@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '../config/api';
 
 /**
  * Nút theo dõi.
@@ -37,7 +38,7 @@ const FollowButton = ({ targetUsername, initialIsFollowing = false, isFollowingM
     try {
       setIsLoading(true);
       setErrorMsg('');
-      const url = `http://localhost:8080/api/social/users/${encodeURIComponent(targetUsername)}/follow`;
+      const url = `${API_BASE_URL}/api/social/users/${encodeURIComponent(targetUsername)}/follow`;
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
       // Gửi đúng hành động mà người dùng nhìn thấy trên nút (không dùng toggle):

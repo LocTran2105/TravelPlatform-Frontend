@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Search } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = API_BASE_URL;
 
 const UserSearchBox = () => {
   const navigate = useNavigate();

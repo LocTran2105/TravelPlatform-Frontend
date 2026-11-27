@@ -1,8 +1,11 @@
 import { Fragment } from 'react';
 import {
-  MapPin, Plus, Search, X, Car, CheckSquare, Clock, Trash2, ArrowUp, ArrowDown, CornerDownRight, Navigation
+  MapPin, Plus, Search, X, Car, CheckSquare, Clock, Trash2, ArrowUp, ArrowDown, CornerDownRight, Navigation,
+  AlertTriangle
 } from 'lucide-react';
 import { formatFullDate, formatVND } from '../utils/tripDetail';
+import { DAY_LABELS, checkVisitTime, formatDayHours, isoWeekday, visitWarning } from '../utils/openingHours';
+import { getDestPlaceId } from '../utils/place';
 
 // Khối một ngày trong phần Lịch trình của TripDetail. Chỉ hiển thị: state và handler nằm ở TripDetail.
 
@@ -47,7 +50,7 @@ const ItineraryDay = ({
   handleToggleVisited, openTimePicker, activeTimePickerDestId, setActiveTimePickerDestId, timeDraft,
   setTimeDraft, pickTimeSlot, saveTime, expenseStats, openExpenseDialog, routeData, addingDayId,
   searchRef, searchNotice, searchQuery, setSearchQuery, setAddingDayId, setSearchNotice,
-  visibleSuggestions, handleAddDestination
+  visibleSuggestions, handleAddDestination, partnerHours = {}
 }) => {
   return (
     <div data-day-id={day.id} ref={dayRef} {...getDayDropProps(day)} className={`bg-white border rounded-3xl p-6 shadow-sm transition-all ${dropDayId === day.id ? 'border-indigo-400 ring-4 ring-indigo-100 bg-indigo-50/30' : focusedDayId === day.id ? 'border-[#FF5645] ring-4 ring-[#FF5645]/10' : 'border-slate-200'}`}>
@@ -75,7 +78,11 @@ const ItineraryDay = ({
         ) : (
           day.destinations.map((dest, idx) => {
             const isActive = activeDestination?.id === dest.id;
-            const isVisited = dest.isVisited || false; 
+            const isVisited = dest.isVisited || false;
+            // Giờ mở cửa do Partner khai báo (chỉ có với địa điểm đã xác minh)
+            const placeHours = partnerHours[String(getDestPlaceId(dest))];
+            const weekday = isoWeekday(day.dayDate);
+            const hoursWarning = visitWarning(placeHours, day.dayDate, dest.timeRange);
 
             const showDropLineBefore = draggingDestId != null && reorderTarget?.dayId === day.id && reorderTarget.index === idx;
             return (
@@ -180,6 +187,13 @@ const ItineraryDay = ({
                     dest.note && <p className="text-[13px] text-slate-600 mb-2 line-clamp-2">{dest.note}</p>
                   )}
 
+                  {hoursWarning && (
+                    <p className="flex items-start gap-1.5 mb-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[12px] font-semibold text-amber-800">
+                      <AlertTriangle className="w-3.5 h-3.5 mt-px shrink-0 text-amber-600" />
+                      <span>{hoursWarning}</span>
+                    </p>
+                  )}
+
                   {isActive && canEdit && (
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 pt-2 border-t border-slate-200 relative">
                       
@@ -241,6 +255,24 @@ const ItineraryDay = ({
                                   />
                                 </div>
                               </div>
+
+                              {placeHours && weekday && (() => {
+                                const draftCheck = checkVisitTime(placeHours, weekday, timeDraft.start, timeDraft.end);
+                                return (
+                                  <div className="space-y-1 text-[12px]">
+                                    <p className="flex items-center gap-1.5 font-semibold text-slate-500">
+                                      <Clock className="w-3.5 h-3.5" />
+                                      Giờ mở cửa {DAY_LABELS[weekday]}: {formatDayHours(placeHours, weekday) || 'chưa có'}
+                                    </p>
+                                    {draftCheck && !draftCheck.ok && (
+                                      <p className="flex items-start gap-1.5 font-semibold text-amber-700">
+                                        <AlertTriangle className="w-3.5 h-3.5 mt-px shrink-0" />
+                                        {draftCheck.reason}
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })()}
 
                               <div
                                 className="h-32 overflow-y-auto border border-slate-100 rounded-lg py-1 custom-scrollbar"

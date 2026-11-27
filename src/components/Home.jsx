@@ -16,6 +16,7 @@ import PendingInvitations from './PendingInvitations';
 import TripCard from './TripCard';
 import HomePlaceMap from './HomePlaceMap';
 import useTripActions from './useTripActions';
+import { API_BASE_URL } from '../config/api';
 
 // Trang chủ chỉ hiện tối đa ngần này chuyến đi, còn lại xem ở trang cá nhân
 const MAX_HOME_TRIPS = 4;
@@ -57,7 +58,7 @@ const Home = () => {
 
     setLoadingTrips(true);
     try {
-      const response = await axios.get('http://localhost:8080/api/trips/my-trips', {
+      const response = await axios.get(`${API_BASE_URL}/api/trips/my-trips`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       // Sắp xếp chuyến đi mới nhất lên đầu

@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { Flag, X, CheckCircle2 } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
-const API = 'http://localhost:8080/api/reports';
+const API = `${API_BASE_URL}/api/reports`;
 const MAX_DETAILS = 500; // khớp ReportService.MAX_DETAILS_LENGTH ở backend
 
 // Mã lý do khớp ReportService.REASON_CODES ở backend.

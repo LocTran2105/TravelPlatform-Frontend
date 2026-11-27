@@ -10,6 +10,7 @@ import useTripActions from './useTripActions';
 import PostCard from './PostCard';
 import PostDialog from './PostDialog';
 import usePostActions from './usePostActions';
+import { API_BASE_URL } from '../config/api';
 
 const PublicProfile = () => {
   const [posts, setPosts] = useState([]);
@@ -47,7 +48,7 @@ const PublicProfile = () => {
         // 1. GỌI API LẤY THÔNG TIN USER ĐANG ĐĂNG NHẬP (Thay vì dùng localStorage)
         if (token) {
           try {
-            const resCurrentUser = await axios.get('http://localhost:8080/api/users/profile', { headers });
+            const resCurrentUser = await axios.get(`${API_BASE_URL}/api/users/profile`, { headers });
             loggedInUser = resCurrentUser.data;
             setCurrentUser(loggedInUser);
           } catch (err) {
@@ -72,7 +73,7 @@ const PublicProfile = () => {
         let profile;
         try {
           const userRes = await axios.get(
-            `http://localhost:8080/api/users/${encodeURIComponent(targetUsername)}`,
+            `${API_BASE_URL}/api/users/${encodeURIComponent(targetUsername)}`,
             { headers }
           );
           profile = userRes.data;
@@ -87,15 +88,15 @@ const PublicProfile = () => {
         // Mọi hồ sơ (kể cả của chính mình) dùng chung một endpoint: chỉ liệt kê chuyến đi
         // do người đó làm chủ, backend tự lọc theo quyền hiển thị của người xem.
         // (/my-trips gồm cả chuyến đi mình chỉ là bạn đồng hành nên không dùng ở đây.)
-        const tripsUrl = `http://localhost:8080/api/trips/user/${encodeURIComponent(targetUsername)}`;
+        const tripsUrl = `${API_BASE_URL}/api/trips/user/${encodeURIComponent(targetUsername)}`;
 
-        const postsUrl = `http://localhost:8080/api/posts/user/${encodeURIComponent(targetUsername)}`; // URL BÀI ĐĂNG
+        const postsUrl = `${API_BASE_URL}/api/posts/user/${encodeURIComponent(targetUsername)}`; // URL BÀI ĐĂNG
 
         const [followerRes, followingRes, tripsRes, infoRes, postsRes] = await Promise.allSettled([ // THÊM postsRes
-          axios.get(`http://localhost:8080/api/social/users/${encodeURIComponent(targetUsername)}/followers`, { headers }),
-          axios.get(`http://localhost:8080/api/social/users/${encodeURIComponent(targetUsername)}/following`, { headers }),
+          axios.get(`${API_BASE_URL}/api/social/users/${encodeURIComponent(targetUsername)}/followers`, { headers }),
+          axios.get(`${API_BASE_URL}/api/social/users/${encodeURIComponent(targetUsername)}/following`, { headers }),
           axios.get(tripsUrl, { headers }),
-          axios.get(`http://localhost:8080/api/social/users/${encodeURIComponent(targetUsername)}/follow-info`, { headers }),
+          axios.get(`${API_BASE_URL}/api/social/users/${encodeURIComponent(targetUsername)}/follow-info`, { headers }),
           axios.get(postsUrl, { headers }) // GỌI API BÀI ĐĂNG
         ]);
 
@@ -182,7 +183,7 @@ const PublicProfile = () => {
     if (!profileUser) return;
     const token = localStorage.getItem('token');
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
-    axios.get(`http://localhost:8080/api/posts/user/${encodeURIComponent(profileUser.username)}`, { headers })
+    axios.get(`${API_BASE_URL}/api/posts/user/${encodeURIComponent(profileUser.username)}`, { headers })
       .then((res) => {
         const data = res.data;
         setPosts(Array.isArray(data) ? data : data?.items ?? data?.content ?? []);

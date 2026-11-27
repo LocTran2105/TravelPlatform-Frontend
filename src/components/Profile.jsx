@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { User, Lock, Mail, Phone, Compass, ArrowLeft, Camera, CheckCircle2, AlertCircle, AtSign } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 const USERNAME_REGEX = /^[a-z0-9][a-z0-9._-]{1,8}[a-z0-9]$/;
 
@@ -36,7 +37,7 @@ const Profile = () => {
     // localStorage chỉ lưu id/email/fullName/role lúc đăng nhập,
     // nên tải hồ sơ đầy đủ (số điện thoại, username...) từ server.
     axios
-      .get('http://localhost:8080/api/users/profile', {
+      .get(`${API_BASE_URL}/api/users/profile`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       .then((res) => {
@@ -79,7 +80,7 @@ const Profile = () => {
     try {
       const token = localStorage.getItem('token');
       await axios.put(
-        'http://localhost:8080/api/users/profile',
+        `${API_BASE_URL}/api/users/profile`,
         { ...formData, username },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -108,7 +109,7 @@ const Profile = () => {
 
     try {
       const token = localStorage.getItem('token');
-      await axios.put('http://localhost:8080/api/users/change-password', 
+      await axios.put(`${API_BASE_URL}/api/users/change-password`, 
         { oldPassword: passwordData.oldPassword, newPassword: passwordData.newPassword },
         { headers: { Authorization: `Bearer ${token}` } }
       );

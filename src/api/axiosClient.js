@@ -1,8 +1,9 @@
 
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api';
 
 const axiosClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
+  baseURL: API_BASE_URL,
   timeout: 20000,
   headers: {
     Accept: 'application/json',
@@ -60,7 +61,7 @@ export function getApiError(
   }
 
   if (!error?.response) {
-    return 'Không thể kết nối Backend. Hãy kiểm tra máy chủ tại localhost:8080.';
+    return `Không thể kết nối Backend. Hãy kiểm tra máy chủ tại ${API_BASE_URL}.`;
   }
 
   return fallback;

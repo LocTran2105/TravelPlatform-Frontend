@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { X, Search, Check, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { cloudinaryResize, normalizeText } from '../utils/cover';
+import { API_BASE_URL } from '../config/api';
 
-const API = 'http://localhost:8080';
+const API = API_BASE_URL;
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
 

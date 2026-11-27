@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api';
 
 export default function TripPlannerBoard({ tripId, dayId }) {
   const [recommendations, setRecommendations] = useState([]);
@@ -9,7 +10,7 @@ export default function TripPlannerBoard({ tripId, dayId }) {
 
   // Cấu hình Axios instance tự động gắn Token từ localStorage
   const axiosInstance = axios.create({
-    baseURL: 'http://localhost:8080', // Domain BE của bạn
+    baseURL: API_BASE_URL, // Domain BE của bạn
   });
 
   axiosInstance.interceptors.request.use((config) => {

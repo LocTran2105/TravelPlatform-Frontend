@@ -5,6 +5,7 @@ export const ADMIN_ENDPOINTS = {
   dashboard: '/api/admin/dashboard',
   applications: '/api/admin/partner-applications',
   businessSubmissions: '/api/admin/partner-submissions',
+  businesses: '/api/admin/businesses',
 };
 
 export const adminApi = {
@@ -63,6 +64,31 @@ export const adminApi = {
         `${ADMIN_ENDPOINTS.businessSubmissions}/${id}/reject`,
         { note },
       )
+      .then((response) => response.data),
+
+  // Quản lý địa điểm đã có: lọc, ẩn/hiện, trạng thái hoạt động, vị trí.
+  // params: { verificationStatus, publicationStatus, businessType, keyword, page, size } -> Spring Page
+  getBusinesses: (params = {}) =>
+    axiosClient
+      .get(ADMIN_ENDPOINTS.businesses, { params })
+      .then((response) => response.data),
+
+  // publicationStatus: PUBLISHED | HIDDEN | DRAFT
+  updateBusinessVisibility: (id, publicationStatus) =>
+    axiosClient
+      .put(`${ADMIN_ENDPOINTS.businesses}/${id}/visibility`, { publicationStatus })
+      .then((response) => response.data),
+
+  // operatingStatus: OPEN | TEMPORARILY_CLOSED | CLOSED_PERMANENTLY
+  updateBusinessOperatingStatus: (id, operatingStatus) =>
+    axiosClient
+      .put(`${ADMIN_ENDPOINTS.businesses}/${id}/operating-status`, { operatingStatus })
+      .then((response) => response.data),
+
+  // location: { address, ward, district, city, province, latitude, longitude }
+  updateBusinessLocation: (id, location) =>
+    axiosClient
+      .put(`${ADMIN_ENDPOINTS.businesses}/${id}/location`, location)
       .then((response) => response.data),
 };
 

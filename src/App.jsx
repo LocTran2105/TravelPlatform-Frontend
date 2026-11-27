@@ -7,6 +7,7 @@ import {
 } from 'react-router-dom';
 
 import axiosClient from './api/axiosClient';
+import Toaster from './components/Toaster';
 
 // Traveller
 import Home from './components/Home';
@@ -37,6 +38,7 @@ import PartnerSubmissions from './pages/partner/PartnerSubmissions';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminApplications from './pages/admin/AdminApplications';
 import AdminSubmissions from './pages/admin/AdminSubmissions';
+import AdminBusinesses from './pages/admin/AdminBusinesses';
 
 // CSS
 import './styles/partner-admin.css';
@@ -57,6 +59,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <Toaster />
       <Routes>
 
         {/* ================= PUBLIC / TRAVELLER ================= */}
@@ -143,6 +146,11 @@ function App() {
           <Route
             path="/admin/submissions"
             element={<AdminSubmissions />}
+          />
+
+          <Route
+            path="/admin/businesses"
+            element={<AdminBusinesses />}
           />
         </Route>
 

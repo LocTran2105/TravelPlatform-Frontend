@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Trash2, AlertTriangle } from 'lucide-react';
 import ShareTripModal from './ShareTripModal';
-
-const API = 'http://localhost:8080';
+import { API_BASE_URL } from '../config/api';
 
 const apiMessage = (e, fallback) => {
   const data = e?.response?.data;
@@ -43,7 +42,7 @@ export default function useTripActions({ onDeleted, onVisibilityChanged, onShare
     setDeletingId(trip.id);
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`${API}/api/trips/${trip.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(`${API_BASE_URL}/api/trips/${trip.id}`, { headers: { Authorization: `Bearer ${token}` } });
       setDialog(null);
       onDeleted?.(trip.id);
     } catch (e) {
@@ -58,7 +57,7 @@ export default function useTripActions({ onDeleted, onVisibilityChanged, onShare
     setVisibilityBusyId(trip.id);
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.patch(`${API}/api/trips/${trip.id}/visibility`, { visibility: value },
+      const res = await axios.patch(`${API_BASE_URL}/api/trips/${trip.id}/visibility`, { visibility: value },
         { headers: { Authorization: `Bearer ${token}` } });
       onVisibilityChanged?.(trip.id, res?.data?.visibility || value);
     } catch (e) {

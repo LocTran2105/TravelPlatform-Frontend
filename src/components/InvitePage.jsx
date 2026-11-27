@@ -13,8 +13,9 @@ import {
   Loader2,
 } from 'lucide-react';
 import { withRedirect } from '../utils/redirect';
+import { API_BASE_URL } from '../config/api';
 
-const API = 'http://localhost:8080';
+const API = API_BASE_URL;
 
 // '2026-11-21' -> '21/11/2026' (không đi qua Date để khỏi lệch múi giờ)
 const formatDate = (value) => (value ? String(value).split('-').reverse().join('/') : '');

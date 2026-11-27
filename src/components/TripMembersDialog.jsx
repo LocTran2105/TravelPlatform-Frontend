@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { X, Loader2, AlertCircle, UserPlus, Clock } from 'lucide-react';
 import { actorLabel, describeActivity, dayKey, fullTime, timeAgo } from '../utils/activity';
+import { API_BASE_URL } from '../config/api';
 
-const API = 'http://localhost:8080';
+const API = API_BASE_URL;
 const PAGE_SIZE = 20;
 
 const ROLE_LABEL = { OWNER: 'Chủ chuyến đi', EDITOR: 'Có thể chỉnh sửa', VIEWER: 'Chỉ xem' };

@@ -2,8 +2,15 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus, Search, X, MoreHorizontal, ChevronLeft, ChevronRight, MessageSquare, Star, Send,
-  Play, Image as ImageIcon, Flag
+  Play, Image as ImageIcon, Flag, BadgeCheck
 } from 'lucide-react';
+import PartnerPlaceDetails from './PartnerPlaceDetails';
+import { openStatusOf } from '../utils/openingHours';
+import { getDestPlaceId } from '../utils/place';
+import { getPartnerProfile } from '../api/placeApi';
+
+// Câu TripDetail hiển thị khi Wikipedia không có bài: ẩn đi nếu đã có thông tin Partner.
+const WIKI_EMPTY_MESSAGES = new Set(['Không tìm thấy thông tin trên Wikipedia.', 'Không thể tải thông tin lúc này.']);
 
 // Panel chi tiết địa điểm nổi trên bản đồ của TripDetail. Chỉ hiển thị: state và handler nằm ở TripDetail.
 
@@ -98,7 +105,7 @@ export const MediaPicker = ({ files, onChange, disabled }) => {
 
 // Lưới ảnh/video dưới mỗi đánh giá trong tab Đánh giá.
 // Bấm vào ảnh sẽ mở trình xem ảnh (lightbox) ngay trong app; video phát trực tiếp trong lưới.
-const ReviewMediaGrid = ({ media }) => {
+const ReviewMediaGrid = ({ media, alt = 'Ảnh đánh giá' }) => {
   const [viewerIndex, setViewerIndex] = useState(null);
   const images = useMemo(() => (media || []).filter(m => m.type !== 'VIDEO'), [media]);
   const isOpen = viewerIndex !== null;
@@ -134,7 +141,7 @@ const ReviewMediaGrid = ({ media }) => {
               onClick={() => setViewerIndex(images.indexOf(m))}
               className="block aspect-square rounded-xl overflow-hidden bg-slate-100 cursor-zoom-in"
             >
-              <img src={m.url} alt="Ảnh đánh giá" loading="lazy" className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+              <img src={m.url} alt={alt} loading="lazy" className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
             </button>
           )
         ))}
@@ -166,7 +173,7 @@ const ReviewMediaGrid = ({ media }) => {
 
           <img
             src={current.url}
-            alt="Ảnh đánh giá"
+            alt={alt}
             onClick={(e) => e.stopPropagation()}
             className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
           />
@@ -267,6 +274,24 @@ const PlaceInfoPanel = ({
   isSubmittingReview, submitReview, uploadLabel, visibleReviewsCount, toggleLikeReview,
   setVisibleReviewsCount, onReportReview, reportedReviewIds
 }) => {
+  // Hồ sơ Partner đã xác minh của địa điểm đang mở (null khi địa điểm không có Partner).
+  // Chỉ dùng kết quả khớp placeId hiện tại, nên đổi địa điểm không cần reset state đồng bộ trong effect.
+  const placeId = getDestPlaceId(activeDestination);
+  const [partner, setPartner] = useState({ placeId: null, data: null });
+  useEffect(() => {
+    if (!isPanelOpen || !placeId) return undefined;
+    const controller = new AbortController();
+    getPartnerProfile(placeId, { signal: controller.signal })
+      .then(data => setPartner({ placeId, data }))
+      .catch(err => {
+        if (err?.name !== 'CanceledError' && err?.name !== 'AbortError') setPartner({ placeId, data: null });
+      });
+    return () => controller.abort();
+  }, [placeId, isPanelOpen]);
+  const profile = placeId && partner.placeId === placeId ? partner.data : null;
+  const status = openStatusOf(profile);
+  const wikiText = placeInfo.extract && !(profile && WIKI_EMPTY_MESSAGES.has(placeInfo.extract)) ? placeInfo.extract : '';
+
   return (
     <div className={`absolute top-4 left-4 bottom-4 w-[400px] bg-white rounded-3xl shadow-2xl z-[1000] border border-slate-100 flex flex-col overflow-hidden transition-transform duration-500 ease-in-out ${activeDestination && isPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[120%] opacity-0 pointer-events-none'}`}>
       {activeDestination && (
@@ -287,6 +312,16 @@ const PlaceInfoPanel = ({
             <div className="absolute bottom-4 left-5 right-5">
               <div className="flex items-center gap-2 mb-2">
                 <span className="bg-[#FF5645] text-white text-xs font-bold px-2.5 py-0.5 rounded-full shadow-sm">{activeDestination.index}</span>
+                {profile && (
+                  <span className="flex items-center gap-1 rounded-full bg-sky-500 px-2.5 py-0.5 text-xs font-bold text-white shadow-sm">
+                    <BadgeCheck className="h-3.5 w-3.5" /> Đã xác minh
+                  </span>
+                )}
+                {status && (
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold text-white shadow-sm ${status.open ? 'bg-emerald-500' : 'bg-slate-700/80'}`}>
+                    {status.label}
+                  </span>
+                )}
               </div>
               <h3 className="text-2xl font-extrabold text-white text-shadow-md leading-tight">{activeDestination.placeName}</h3>
             </div>
@@ -306,13 +341,27 @@ const PlaceInfoPanel = ({
           {/* Nội dung Tabs */}
           <div className="flex-1 overflow-y-auto p-5 scroll-smooth bg-slate-50">
             
-            {/* --- 1. GIỚI THIỆU TỪ WIKIPEDIA --- */}
+            {/* --- 1. GIỚI THIỆU: thông tin Partner đã xác minh (nếu có), rồi Wikipedia --- */}
             {infoTab === 'intro' && (
               <div className="space-y-4">
+                {profile && (
+                  <PartnerPlaceDetails
+                    profile={profile}
+                    gallery={profile.media?.length > 0 && (
+                      <ReviewMediaGrid
+                        alt={`Ảnh ${profile.name}`}
+                        media={profile.media.map(m => ({ url: m.url, type: 'IMAGE' }))}
+                      />
+                    )}
+                  />
+                )}
                 {placeInfo.loading ? (
                   <div className="animate-pulse space-y-3"><div className="h-4 bg-slate-200 rounded w-3/4"></div><div className="h-4 bg-slate-200 rounded w-full"></div></div>
-                ) : (
-                  <p className="text-slate-600 text-[15px] leading-relaxed font-medium">{placeInfo.extract}</p>
+                ) : wikiText && (
+                  <div className="space-y-1.5">
+                    {profile && <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Từ Wikipedia</p>}
+                    <p className="text-slate-600 text-[15px] leading-relaxed font-medium">{wikiText}</p>
+                  </div>
                 )}
               </div>
             )}

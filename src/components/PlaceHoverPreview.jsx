@@ -4,8 +4,9 @@ import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 import axios from 'axios';
 import { MapPin, Utensils, Coffee, Bed, Landmark, Car, Ticket, ImageOff, Newspaper, Star, MousePointerClick, Navigation, Flag } from 'lucide-react';
+import { getDestPlaceId } from '../utils/place';
+import { API_BASE_URL } from '../config/api';
 
-const API_BASE_URL = 'http://localhost:8080';
 const COVER_CHUNK_SIZE = 100; // khớp MAX_PLACE_IDS của PlaceCoverService
 
 // Kích thước cố định để card không bị lệch vị trí khi ảnh tải xong
@@ -16,11 +17,9 @@ const CARD_PAD = 12;  // lề tối thiểu với mép bản đồ
 const STRIP_GAP = 8;  // khoảng cách giữa card và dòng thông báo
 const STRIP_H = 100;  // chiều cao tối đa dòng thông báo (+ nút chỉ đường) bên dưới card
 
-/** Place ID hợp lệ của một điểm trong lịch trình (null nếu là địa điểm tự nhập, chưa liên kết bảng places). */
-export const getDestPlaceId = (dest) => {
-  const n = Number(dest?.placeId ?? dest?.place?.id ?? null);
-  return Number.isSafeInteger(n) && n > 0 ? n : null;
-};
+// Place ID hợp lệ của một điểm trong lịch trình (null nếu là địa điểm tự nhập, chưa liên kết bảng places).
+// Đặt ở utils để file không phụ thuộc leaflet dùng được; export lại để các import cũ vẫn chạy.
+export { getDestPlaceId };
 
 /**
  * Lấy ảnh cover của mọi Place trong chuyến đi bằng đúng 1 request (chia chunk nếu > 100 ID).

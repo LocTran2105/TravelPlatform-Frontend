@@ -23,8 +23,8 @@ import {
   Minimize2,
   GripHorizontal,
 } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
-const API_BASE_URL = 'http://localhost:8080';
 const PLACE_MIME_TYPE = 'application/x-travel-place';
 
 const formatVND = (value) => {

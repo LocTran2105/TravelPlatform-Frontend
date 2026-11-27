@@ -17,6 +17,8 @@ import TripMembersDialog from './TripMembersDialog';
 import TripCoverImage from './TripCoverImage';
 import CoverImagePicker from './CoverImagePicker';
 import { usePlaceCovers, usePlaceActivity, getDestPlaceId } from './PlaceHoverPreview';
+import usePartnerHours from '../hooks/usePartnerHours';
+import { mergeSuggestions, photonOsmRef } from '../utils/place';
 import ItineraryDay from './ItineraryDay';
 import PlaceInfoPanel, { MediaPicker } from './PlaceInfoPanel';
 import ReportDialog from './ReportDialog';
@@ -24,6 +26,8 @@ import TripMap from './TripMap';
 import ExpenseDialogs from './ExpenseDialogs';
 import { presetForDay } from '../utils/directions';
 import { DAY_COLORS, formatFullDate, formatVND, EXPENSE_CATEGORIES, CATEGORY_MAP } from '../utils/tripDetail';
+import { API_BASE_URL } from '../config/api';
+import { toast } from '../utils/toast';
 
 // Thẻ địa điểm AI (AiAssistantChat) gửi payload JSON với MIME này khi kéo.
 const PLACE_MIME_TYPE = 'application/x-travel-place';
@@ -267,6 +271,7 @@ const TripDetail = () => {
   const [hover, setHover] = useState(null); // { id, source } | null
   const hoverTimerRef = useRef(null);
   const { covers: destCovers } = usePlaceCovers(trip);
+  const partnerHours = usePartnerHours(trip); // giờ mở cửa của địa điểm đã xác minh -> cảnh báo trong lịch trình
 
   const placeActivity = usePlaceActivity(trip);
 
@@ -394,7 +399,7 @@ const TripDetail = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) { navigate('/login'); return; }
-      const response = await axios.get(`http://localhost:8080/api/trips/${tripId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await axios.get(`${API_BASE_URL}/api/trips/${tripId}`, { headers: { Authorization: `Bearer ${token}` } });
       setTrip(response.data);
     } catch (err) { setError('Lỗi máy chủ'); } finally { setLoading(false); }
   };
@@ -408,7 +413,7 @@ const TripDetail = () => {
     const token = localStorage.getItem('token');
     if (!token) return undefined;
     axios
-      .get(`http://localhost:8080/api/trips/${tripId}/members`, { headers: { Authorization: `Bearer ${token}` } })
+      .get(`${API_BASE_URL}/api/trips/${tripId}/members`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
         if (cancelled) return;
         setMembers(Array.isArray(res.data) ? res.data : []);
@@ -508,7 +513,7 @@ const TripDetail = () => {
       const anchorDest = (trip?.tripDays || []).flatMap(d => d.destinations || []).find(hasCoord);
       const anchor = anchorDest ? { lat: Number(anchorDest.latitude), lng: Number(anchorDest.longitude) } : null;
 
-      const dbRequest = axios.get('http://localhost:8080/api/v1/places/search', {
+      const dbRequest = axios.get(`${API_BASE_URL}/api/v1/places/search`, {
         params: { q, destination: trip?.destination || '', limit: 5 },
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         signal: controller.signal,
@@ -517,6 +522,7 @@ const TripDetail = () => {
         source: 'db',
         placeId: p.id,
         verified: Boolean(p.verified),
+        osmRef: p.provider === 'OSM' ? p.providerPlaceId : null,
         name: p.name,
         address: p.address || p.destination || '',
         lat: Number(p.latitude),
@@ -532,6 +538,7 @@ const TripDetail = () => {
           return {
             key: `osm-${p.osm_type || ''}${p.osm_id}`,
             source: 'photon',
+            osmRef: photonOsmRef(p.osm_type, p.osm_id),
             name: p.name || p.street || p.city,
             address: [p.street && p.name ? p.street : null, p.city, p.country].filter(Boolean).join(', '),
             lat: f.geometry.coordinates[1],
@@ -543,9 +550,8 @@ const TripDetail = () => {
       if (controller.signal.aborted) return;
       const fromDb = dbResult.status === 'fulfilled' ? dbResult.value : [];
       const fromPhoton = photonResult.status === 'fulfilled' ? photonResult.value : [];
-      // Bỏ kết quả Photon trùng tên với địa điểm đã có trong DB.
-      const dbNames = new Set(fromDb.map(p => String(p.name).trim().toLowerCase()));
-      setSuggestions([...fromDb, ...fromPhoton.filter(p => !dbNames.has(String(p.name).trim().toLowerCase()))].slice(0, 8));
+      // Bỏ kết quả Photon trùng với địa điểm đã có trong DB (cùng mã OSM, hoặc tên gần giống ở gần nhau).
+      setSuggestions(mergeSuggestions(fromDb, fromPhoton));
     };
 
     const delay = setTimeout(() => { fetchPlaces().catch(err => { if (err?.name !== 'AbortError' && err?.name !== 'CanceledError') console.error(err); }); }, 400);
@@ -560,16 +566,16 @@ const TripDetail = () => {
       try {
         await addRecommendedPlaceToDay({ placeId: place.placeId, name: place.name }, dayId);
         setAddingDayId(null); setSearchQuery(''); setSuggestions([]); setSearchNotice(null);
-      } catch (err) { alert(getApiError(err, err?.message || 'Không thêm được địa điểm.')); }
+      } catch (err) { toast.error(getApiError(err, err?.message || 'Không thêm được địa điểm.')); }
       return;
     }
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`http://localhost:8080/api/trips/days/${dayId}/destinations`, {
+      await axios.post(`${API_BASE_URL}/api/trips/days/${dayId}/destinations`, {
         placeName: place.name, latitude: place.lat, longitude: place.lon, note: place.address, estimatedCost: 0
       }, { headers: { Authorization: `Bearer ${token}` }});
       setAddingDayId(null); setSearchQuery(''); setSuggestions([]); setSearchNotice(null); fetchTripDetails(); 
-    } catch (err) { alert("Lỗi: " + (err.response?.data || err.message)); }
+    } catch (err) { toast.error("Lỗi: " + (err.response?.data || err.message)); }
   };
 
   // Thêm địa điểm đề xuất (đã có Place ID) vào một ngày. Dùng chung cho nút "Thêm" trong AI chat và kéo-thả.
@@ -592,7 +598,7 @@ const TripDetail = () => {
 
     const token = localStorage.getItem('token');
     if (!token) throw new Error('Bạn cần đăng nhập để thêm địa điểm.');
-    await axios.post(`http://localhost:8080/api/trips/days/${day.id}/destinations`, {
+    await axios.post(`${API_BASE_URL}/api/trips/days/${day.id}/destinations`, {
       placeId,
       placeName,
       orderIndex: (day.destinations || []).length,
@@ -666,11 +672,11 @@ const TripDetail = () => {
     setSavingOrder(true);
     try {
       const token = localStorage.getItem('token');
-      await axios.put('http://localhost:8080/api/trips/days/order', body, {
+      await axios.put(`${API_BASE_URL}/api/trips/days/order`, body, {
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch (err) {
-      alert(getApiError(err, 'Không lưu được thứ tự lịch trình. Dữ liệu sẽ được tải lại.'));
+      toast.error(getApiError(err, 'Không lưu được thứ tự lịch trình. Dữ liệu sẽ được tải lại.'));
     } finally {
       setSavingOrder(false);
       fetchTripDetails(); // đồng bộ lại (rollback nếu lỗi)
@@ -764,7 +770,7 @@ const TripDetail = () => {
           detail: { tripId: trip?.id, placeName: place?.name, dayNumber: day.dayNumber },
         }));
       } catch (err) {
-        alert(getApiError(err, err?.message || 'Không thể thêm địa điểm vào lịch trình.'));
+        toast.error(getApiError(err, err?.message || 'Không thể thêm địa điểm vào lịch trình.'));
       } finally {
         setDroppingDayId(null);
       }
@@ -778,7 +784,7 @@ const TripDetail = () => {
     setDeletingDestId(dest.id);
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:8080/api/trips/days/destinations/${dest.id}`, {
+      await axios.delete(`${API_BASE_URL}/api/trips/days/destinations/${dest.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (activeDestination?.id === dest.id) {
@@ -797,18 +803,10 @@ const TripDetail = () => {
       fetchTripDetails();
       fetchExpenses();
     } catch (e) {
-      alert(getApiError(e, 'Không xóa được địa điểm. Vui lòng thử lại!'));
+      toast.error(getApiError(e, 'Không xóa được địa điểm. Vui lòng thử lại!'));
     } finally {
       setDeletingDestId(null);
     }
-  };
-
-  // Bấm vào địa điểm trong lịch trình hoặc marker: bản đồ bay tới địa điểm và hiện thẻ xem nhanh (ghim).
-  // Trang thông tin (giới thiệu, đánh giá, bài đăng) chỉ mở khi bấm vào thẻ xem nhanh.
-  const selectDestination = (dest, idx) => {
-    setActiveDestination({ ...dest, index: idx + 1 });
-    setIsPanelOpen(false);
-    showHover(dest.id, 'select', 0, true);
   };
 
   const handleDestinationClick = async (dest, idx) => {
@@ -837,7 +835,7 @@ const TripDetail = () => {
     } catch (e) { setPlaceInfo({ extract: 'Không thể tải thông tin lúc này.', loading: false }); }
 
     try {
-      const postsRes = await axios.get('http://localhost:8080/api/posts');
+      const postsRes = await axios.get(`${API_BASE_URL}/api/posts`);
       const relatedPosts = postsRes.data.filter(p => p.locationName && p.locationName.toLowerCase().includes(dest.placeName.toLowerCase()));
       setPlacePosts(relatedPosts);
       
@@ -870,13 +868,13 @@ const TripDetail = () => {
     try {
       const token = localStorage.getItem('token');
       await axios.patch(
-        `http://localhost:8080/api/trips/days/destinations/${destId}`,
+        `${API_BASE_URL}/api/trips/days/destinations/${destId}`,
         { field, value },
         { headers: { Authorization: `Bearer ${token}` } }
       );
     } catch (error) {
       console.error("Lỗi cập nhật địa điểm:", error);
-      alert(getApiError(error, 'Không lưu được thay đổi. Dữ liệu sẽ được tải lại.'));
+      toast.error(getApiError(error, 'Không lưu được thay đổi. Dữ liệu sẽ được tải lại.'));
       fetchTripDetails(); // rollback về dữ liệu thật từ server
     }
   };
@@ -886,7 +884,7 @@ const TripDetail = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) return;
-      const res = await axios.get(`http://localhost:8080/api/trips/${tripId}/expenses`, {
+      const res = await axios.get(`${API_BASE_URL}/api/trips/${tripId}/expenses`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setExpenseData(res.data);
@@ -938,7 +936,7 @@ const TripDetail = () => {
       setIsSavingExpense(true);
       setExpenseError('');
       const token = localStorage.getItem('token');
-      await axios.post(`http://localhost:8080/api/trips/${tripId}/expenses`, payload, {
+      await axios.post(`${API_BASE_URL}/api/trips/${tripId}/expenses`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
       await fetchExpenses();
@@ -954,12 +952,12 @@ const TripDetail = () => {
     if (!window.confirm(`Xóa khoản chi "${expense.title}"?`)) return;
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:8080/api/trips/${tripId}/expenses/${expense.id}`, {
+      await axios.delete(`${API_BASE_URL}/api/trips/${tripId}/expenses/${expense.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       await fetchExpenses();
     } catch (e) {
-      alert(getApiError(e, 'Không xóa được khoản chi. Vui lòng thử lại!'));
+      toast.error(getApiError(e, 'Không xóa được khoản chi. Vui lòng thử lại!'));
     }
   };
 
@@ -967,7 +965,7 @@ const TripDetail = () => {
     setBalanceDialog({ loading: true, data: null, error: '' });
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get(`http://localhost:8080/api/trips/${tripId}/expenses/settlement`, {
+      const res = await axios.get(`${API_BASE_URL}/api/trips/${tripId}/expenses/settlement`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setBalanceDialog({ loading: false, data: res.data, error: '' });
@@ -978,18 +976,18 @@ const TripDetail = () => {
 
   const saveBudget = async () => {
     const amount = budgetInput === '' ? 0 : Number(budgetInput);
-    if (!Number.isFinite(amount) || amount < 0) { alert('Ngân sách phải là số không âm.'); return; }
-    if (amount > MAX_MONEY) { alert('Ngân sách quá lớn.'); return; }
+    if (!Number.isFinite(amount) || amount < 0) { toast.error('Ngân sách phải là số không âm.'); return; }
+    if (amount > MAX_MONEY) { toast.error('Ngân sách quá lớn.'); return; }
     try {
       setIsSavingBudget(true);
       const token = localStorage.getItem('token');
-      await axios.patch(`http://localhost:8080/api/trips/${tripId}/budget`, { totalBudget: amount }, {
+      await axios.patch(`${API_BASE_URL}/api/trips/${tripId}/budget`, { totalBudget: amount }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setTrip(prev => ({ ...prev, totalBudget: amount }));
       setBudgetDialogOpen(false);
     } catch (e) {
-      alert(getApiError(e, 'Không lưu được ngân sách. Vui lòng thử lại!'));
+      toast.error(getApiError(e, 'Không lưu được ngân sách. Vui lòng thử lại!'));
     } finally {
       setIsSavingBudget(false);
     }
@@ -1024,7 +1022,7 @@ const TripDetail = () => {
       formData.append('content', visitNote.trim());
       visitFiles.forEach(f => formData.append('files', f));
       setUploadPercent(0);
-      await axios.post('http://localhost:8080/api/place-reviews', formData, {
+      await axios.post(`${API_BASE_URL}/api/place-reviews`, formData, {
         headers: { Authorization: `Bearer ${token}` },
         onUploadProgress: (ev) => { if (ev.total) setUploadPercent(Math.round((ev.loaded * 100) / ev.total)); }
       });
@@ -1058,8 +1056,8 @@ const TripDetail = () => {
 
   const saveTime = (dayId, destId) => {
     const { start, end } = timeDraft;
-    if (!start) { alert('Vui lòng chọn giờ bắt đầu'); return; }
-    if (end && end <= start) { alert('Giờ kết thúc phải sau giờ bắt đầu'); return; }
+    if (!start) { toast.error('Vui lòng chọn giờ bắt đầu'); return; }
+    if (end && end <= start) { toast.error('Giờ kết thúc phải sau giờ bắt đầu'); return; }
     handleUpdateDestProperty(dayId, destId, 'time', end ? `${start} - ${end}` : start);
     setActiveTimePickerDestId(null);
   };
@@ -1080,7 +1078,7 @@ const TripDetail = () => {
   const fetchReviews = async (locName) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get(`http://localhost:8080/api/place-reviews?locationName=${encodeURIComponent(locName)}`, {
+      const res = await axios.get(`${API_BASE_URL}/api/place-reviews?locationName=${encodeURIComponent(locName)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       setPlaceReviews(res.data);
@@ -1089,7 +1087,7 @@ const TripDetail = () => {
 
   const submitReview = async () => {
     if (!newReviewText.trim() && newReviewFiles.length === 0) {
-      alert('Hãy viết nội dung hoặc đính kèm ảnh/video trước khi đăng.');
+      toast.error('Hãy viết nội dung hoặc đính kèm ảnh/video trước khi đăng.');
       return;
     }
     try {
@@ -1102,7 +1100,7 @@ const TripDetail = () => {
       formData.append('content', newReviewText.trim());
       newReviewFiles.forEach(f => formData.append('files', f));
 
-      await axios.post('http://localhost:8080/api/place-reviews', formData, {
+      await axios.post(`${API_BASE_URL}/api/place-reviews`, formData, {
         headers: { Authorization: `Bearer ${token}` },
         onUploadProgress: (ev) => { if (ev.total) setUploadPercent(Math.round((ev.loaded * 100) / ev.total)); }
       });
@@ -1112,7 +1110,7 @@ const TripDetail = () => {
       setShowReviewForm(false); // chỉ đóng form khi gửi thành công, lỗi thì giữ nguyên nội dung đã nhập
       fetchReviews(activeDestination.placeName);
     } catch (e) {
-      alert(getApiError(e, "Lỗi kết nối đến máy chủ. Vui lòng thử lại!"));
+      toast.error(getApiError(e, "Lỗi kết nối đến máy chủ. Vui lòng thử lại!"));
     } finally {
       setIsSubmittingReview(false);
     }
@@ -1131,11 +1129,11 @@ const TripDetail = () => {
   const toggleLikeReview = async (reviewId) => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`http://localhost:8080/api/place-reviews/${reviewId}/like`, {}, {
+      await axios.post(`${API_BASE_URL}/api/place-reviews/${reviewId}/like`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       fetchReviews(activeDestination.placeName); 
-    } catch (e) { alert("Bạn cần đăng nhập để thả tim."); }
+    } catch (e) { toast.info("Bạn cần đăng nhập để thả tim."); }
   };
 
   // Cuộn khung chính tới một phần tử. Trong lúc cuộn mượt, tạm tắt bộ theo dõi để thanh bên không nhấp nháy qua các mục ở giữa.
@@ -1305,6 +1303,27 @@ const TripDetail = () => {
     [mapStops, mapDayId]
   );
 
+  // Bấm vào địa điểm trong lịch trình hoặc marker: bản đồ bay tới địa điểm và hiện thẻ xem nhanh (ghim).
+  // Trang thông tin (giới thiệu, đánh giá, bài đăng) chỉ mở khi bấm vào thẻ xem nhanh.
+  // Địa điểm thuộc ngày đang bị lọc khỏi bản đồ (vd. đang xem N1, bấm thẻ ở N2) thì chuyển bản đồ sang ngày đó,
+  // nếu không marker không được vẽ và thẻ xem nhanh không có chỗ hiện.
+  // Khai báo sau routeDays/mapDayId để React Compiler giữ được các useMemo phía trên.
+  const selectDestination = (dest, idx) => {
+    const destDayId = routeDays.find(d => d.stops.some(s => s.id === dest.id))?.id;
+    if (!destDayId) {
+      // Chưa có tọa độ nên không có marker: mở thẳng trang thông tin.
+      handleDestinationClick(dest, idx);
+      return;
+    }
+    if (mapDayId && mapDayId !== destDayId) {
+      if (mapDayMode === 'auto') setFocusedDayId(destDayId); // giữ chế độ "Theo cuộn"
+      else setMapDayMode(destDayId);
+    }
+    setActiveDestination({ ...dest, index: idx + 1 });
+    setIsPanelOpen(false);
+    showHover(dest.id, 'select', 0, true);
+  };
+
   // THỐNG KÊ ĐÁNH GIÁ (Google Maps Style)
   const reviewStats = useMemo(() => {
     if (!placeReviews || placeReviews.length === 0) return { avg: 0, total: 0, distribution: {5:0, 4:0, 3:0, 2:0, 1:0} };
@@ -1419,7 +1438,7 @@ const TripDetail = () => {
     openTimePicker, activeTimePickerDestId, setActiveTimePickerDestId, timeDraft, setTimeDraft,
     pickTimeSlot, saveTime, expenseStats, openExpenseDialog, routeData, addingDayId, searchRef,
     searchNotice, searchQuery, setSearchQuery, setAddingDayId, setSearchNotice, visibleSuggestions,
-    handleAddDestination
+    handleAddDestination, partnerHours
   };
 
   return (

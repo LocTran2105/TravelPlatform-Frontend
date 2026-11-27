@@ -11,8 +11,10 @@ import UserMenu from './UserMenu';
 import CommentSection from './CommentSection';
 import ReportDialog from './ReportDialog';
 import { formatCount, formatCountFull } from './formatCount';
+import { API_BASE_URL } from '../config/api';
+import { toast } from '../utils/toast';
 
-const API = 'http://localhost:8080/api';
+const API = `${API_BASE_URL}/api`;
 
 // ---------------------------------------------------------------------------
 // Hằng số & hàm dùng chung
@@ -731,7 +733,7 @@ const Community = () => {
     if (!caption.trim() && attachments.length === 0) return;
 
     if (!getToken()) {
-      alert('Vui lòng đăng nhập để đăng bài!');
+      toast.info('Vui lòng đăng nhập để đăng bài!');
       return;
     }
 
@@ -757,7 +759,7 @@ const Community = () => {
       clearAttachments();
       fetchPosts();
     } catch (error) {
-      alert('Lỗi khi đăng bài: ' + errorMessage(error));
+      toast.error('Lỗi khi đăng bài: ' + errorMessage(error));
     } finally {
       setIsPosting(false);
     }
@@ -772,7 +774,7 @@ const Community = () => {
 
   const handleToggleLike = async (postId, currentIsLiked) => {
     if (!getToken()) {
-      alert('Vui lòng đăng nhập để thao tác!');
+      toast.info('Vui lòng đăng nhập để thao tác!');
       return;
     }
     if (likeInFlight.current.has(postId)) return;
@@ -804,9 +806,9 @@ const Community = () => {
       patchPost(postId, previous); // hoàn lại đúng trạng thái trước đó
       const status = error.response?.status;
       if (status === 401) {
-        alert('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
+        toast.info('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
       } else if (status === 404) {
-        alert('Bài viết không còn khả dụng.');
+        toast.error('Bài viết không còn khả dụng.');
         fetchPosts();
       }
     } finally {
@@ -817,7 +819,7 @@ const Community = () => {
   // Nhấp đúp vào ảnh: hiện tim to; chưa thích thì thích (đã thích rồi chỉ hiện hiệu ứng)
   const handleDoubleClickLike = (postId, currentIsLiked) => {
     if (!getToken()) {
-      alert('Vui lòng đăng nhập để thao tác!');
+      toast.info('Vui lòng đăng nhập để thao tác!');
       return;
     }
     setHeartAnimations((prev) => ({ ...prev, [postId]: true }));
@@ -851,7 +853,7 @@ const Community = () => {
       await axios.delete(`${API}/posts/${post.id}`, { headers: authHeaders() });
       setPosts((prev) => prev.filter((p) => p.id !== post.id));
     } catch (error) {
-      alert('Không thể xóa bài viết: ' + errorMessage(error));
+      toast.error('Không thể xóa bài viết: ' + errorMessage(error));
     }
   };
 

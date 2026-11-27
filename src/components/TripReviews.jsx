@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Star, AlertCircle, CheckCircle2, User } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 const TripReviews = ({ tripId }) => {
   const [reviews, setReviews] = useState([]);
@@ -27,7 +28,7 @@ const TripReviews = ({ tripId }) => {
   const fetchReviews = async (pageNumber) => {
     setLoading(true);
     try {
-      const res = await axios.get(`http://localhost:8080/api/trips/${tripId}/reviews?page=${pageNumber}&size=5`);
+      const res = await axios.get(`${API_BASE_URL}/api/trips/${tripId}/reviews?page=${pageNumber}&size=5`);
       const { content, last } = res.data;
       
       if (pageNumber === 0) {
@@ -57,7 +58,7 @@ const TripReviews = ({ tripId }) => {
 
     try {
       const res = await axios.post(
-        `http://localhost:8080/api/trips/${tripId}/reviews`,
+        `${API_BASE_URL}/api/trips/${tripId}/reviews`,
         { rating, comment },
         { headers: { Authorization: `Bearer ${token}` } }
       );
