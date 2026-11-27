@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  Check, Eye, EyeOff, LoaderCircle, MapPinned, RefreshCw, Search, Store, ChevronLeft, ChevronRight, X,
+  Check, Eye, EyeOff, MapPinned, RefreshCw, Search, Store, ChevronLeft, ChevronRight, X,
 } from 'lucide-react';
+import { SkeletonTable } from '../../components/portal/Skeleton';
 import { adminApi } from '../../api/adminApi';
 import { getApiError } from '../../api/axiosClient';
 
@@ -137,7 +138,6 @@ export default function AdminBusinesses() {
     <div className="portal-page">
       <div className="portal-page-heading">
         <div>
-          <div className="portal-eyebrow">DỮ LIỆU ĐỐI TÁC</div>
           <h1>Quản lý địa điểm</h1>
           <p>Ẩn địa điểm trùng hoặc sai, cập nhật trạng thái hoạt động và chỉnh lại vị trí đã duyệt.</p>
         </div>
@@ -174,7 +174,7 @@ export default function AdminBusinesses() {
 
       <section className="portal-panel portal-table-panel">
         {loading ? (
-          <div className="portal-empty"><LoaderCircle className="portal-spin" size={24} />Đang tải địa điểm...</div>
+          <SkeletonTable rows={5} columns={7} label="Đang tải địa điểm" />
         ) : rows.length === 0 ? (
           <div className="portal-empty">
             <div className="portal-empty-icon"><Store size={26} /></div>
@@ -241,7 +241,7 @@ export default function AdminBusinesses() {
           <form className="portal-modal" style={{ width: 'min(640px, 96vw)' }} onSubmit={saveLocation}>
             <div className="portal-modal-header">
               <div>
-                <div className="portal-eyebrow">SỬA VỊ TRÍ</div>
+                <div className="portal-eyebrow">Sửa vị trí</div>
                 <h2>{editing.row.name}</h2>
                 <p>
                   {editing.row.placeProvider === 'OSM'

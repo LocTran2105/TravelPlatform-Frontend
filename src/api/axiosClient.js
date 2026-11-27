@@ -1,6 +1,7 @@
 
 import axios from 'axios';
 import { API_BASE_URL } from '../config/api';
+import { requestFinished, requestStarted } from '../utils/loadingBus';
 
 const axiosClient = axios.create({
   baseURL: API_BASE_URL,
@@ -13,6 +14,7 @@ const axiosClient = axios.create({
 // Tự động gắn JWT vào mỗi request
 axiosClient.interceptors.request.use(
   (config) => {
+    requestStarted();
     const token = localStorage.getItem('token');
 
     if (token) {
@@ -22,13 +24,14 @@ axiosClient.interceptors.request.use(
 
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => { requestFinished(); return Promise.reject(error); }
 );
 
 // Xử lý token hết hạn hoặc không hợp lệ
 axiosClient.interceptors.response.use(
-  (response) => response,
+  (response) => { requestFinished(); return response; },
   (error) => {
+    requestFinished();
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');

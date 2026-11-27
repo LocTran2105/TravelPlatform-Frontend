@@ -41,8 +41,8 @@ import AdminSubmissions from './pages/admin/AdminSubmissions';
 import AdminBusinesses from './pages/admin/AdminBusinesses';
 
 // CSS
+import './styles/portal.css';
 import './styles/partner-admin.css';
-import './styles/portal-typography.css';
 
 
 function App() {

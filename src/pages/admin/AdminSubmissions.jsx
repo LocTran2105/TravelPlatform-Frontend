@@ -6,6 +6,8 @@ import {
   Check, Eye, FileCheck2, Image as ImageIcon, LoaderCircle,
   MapPin, RefreshCw, X, Search, LocateFixed, ExternalLink, Undo2, RotateCcw,
 } from 'lucide-react';
+import { SkeletonTable } from '../../components/portal/Skeleton';
+import { refreshPortalCounts } from '../../utils/portalEvents';
 import { adminApi } from '../../api/adminApi';
 import ResilientTileLayer from '../../components/ResilientTileLayer';
 import { getApiError } from '../../api/axiosClient';
@@ -141,7 +143,7 @@ function AdminDecisionMap({
             <Popup>
               <strong>{candidate.name}</strong><br />
               {candidate.address || 'Chưa có địa chỉ'}<br />
-              <button type="button" onClick={() => onSelectOsm(candidate.id)} style={{ marginTop: 6, color: '#4f46e5', fontWeight: 700 }}>
+              <button type="button" onClick={() => onSelectOsm(candidate.id)} style={{ marginTop: 6, color: 'var(--p-osm)', fontWeight: 700 }}>
                 Chọn POI này
               </button>
             </Popup>
@@ -154,8 +156,8 @@ function AdminDecisionMap({
 
 function DetailField({ label, value }) {
   return (
-    <div style={{ minWidth: 0, padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 10 }}>
-      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>{label}</div>
+    <div style={{ minWidth: 0, padding: '10px 12px', border: '1px solid var(--p-line)', borderRadius: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--p-muted)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 14, fontWeight: 600, overflowWrap: 'anywhere' }}>{valueOrDash(value)}</div>
     </div>
   );
@@ -349,6 +351,7 @@ export default function AdminSubmissions() {
       } else {
         await adminApi.rejectBusinessSubmission(row.id, note);
       }
+      refreshPortalCounts();
       setNotice(action === 'approve'
         ? (approvalDecision.placeProvider === 'OSM'
           ? 'Đã xác nhận liên kết OSM, duyệt Business và duyệt ảnh trong hồ sơ.'
@@ -367,7 +370,6 @@ export default function AdminSubmissions() {
     <div className="portal-page">
       <div className="portal-page-heading">
         <div>
-          <div className="portal-eyebrow">PLACE VERIFICATION</div>
           <h1>Duyệt thông tin địa điểm</h1>
           <p>Kiểm tra hồ sơ Partner gửi lên, đối chiếu thông tin thực tế trước khi đưa vào nguồn dữ liệu công khai.</p>
         </div>
@@ -401,7 +403,7 @@ export default function AdminSubmissions() {
 
       <section className="portal-panel portal-table-panel">
         {loading ? (
-          <div className="portal-empty"><LoaderCircle className="portal-spin" size={24} />Đang tải yêu cầu...</div>
+          <SkeletonTable rows={5} columns={5} label="Đang tải yêu cầu" />
         ) : rows.length === 0 ? (
           <div className="portal-empty">
             <div className="portal-empty-icon"><FileCheck2 size={26} /></div>
@@ -448,7 +450,7 @@ export default function AdminSubmissions() {
           <div className="portal-modal" style={{ width: 'min(1050px, 96vw)', maxHeight: '92vh', overflowY: 'auto' }}>
             <div className="portal-modal-header">
               <div>
-                <div className="portal-eyebrow">SUBMISSION #{selected.id}</div>
+                <div className="portal-eyebrow">Yêu cầu #{selected.id}</div>
                 <h2>{selectedSnapshot.name || selected.businessName || `Địa điểm #${selected.businessId}`}</h2>
                 <p>Partner gửi lúc {formatDate(selected.submittedAt)} · {selected.submittedByEmail || 'Không có email người gửi'}</p>
               </div>
@@ -481,7 +483,7 @@ export default function AdminSubmissions() {
                 <DetailField label="Instagram" value={selectedSnapshot.instagramUrl} />
                 <DetailField label="Trạng thái vận hành" value={selectedSnapshot.operatingStatus} />
               </div>
-              {selectedSnapshot.description && <div style={{ marginTop: 10, padding: 12, background: '#f8fafc', borderRadius: 10 }}><strong>Mô tả chi tiết</strong><p style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>{selectedSnapshot.description}</p></div>}
+              {selectedSnapshot.description && <div style={{ marginTop: 10, padding: 12, background: 'var(--p-sunken)', borderRadius: 10 }}><strong>Mô tả chi tiết</strong><p style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>{selectedSnapshot.description}</p></div>}
               {selectedSnapshot.latitude != null && selectedSnapshot.longitude != null && (
                 <a
                   href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(selectedSnapshot.latitude)}&mlon=${encodeURIComponent(selectedSnapshot.longitude)}#map=17/${encodeURIComponent(selectedSnapshot.latitude)}/${encodeURIComponent(selectedSnapshot.longitude)}`}
@@ -493,11 +495,11 @@ export default function AdminSubmissions() {
               )}
             </section>
 
-            <section style={{ marginBottom: 22, padding: 16, border: '1px solid #dbe3f0', borderRadius: 14, background: '#fbfcff' }}>
+            <section style={{ marginBottom: 22, padding: 16, border: '1px solid var(--p-line)', borderRadius: 14, background: 'var(--p-sunken)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                 <div>
                   <h3 style={{ marginBottom: 5 }}>Kiểm tra bản đồ và xác nhận Place</h3>
-                  <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
+                  <p style={{ color: 'var(--p-muted)', fontSize: 13, margin: 0 }}>
                     Admin chọn POI OSM đúng với Business; nếu OSM không có địa điểm, xác nhận tọa độ Partner để tạo Place PARTNER.
                   </p>
                 </div>
@@ -519,12 +521,12 @@ export default function AdminSubmissions() {
 
               {osmError && <div className="portal-alert warning" style={{ marginBottom: 12 }}>{osmError}</div>}
               {placeMode === 'OSM' && (
-                <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, background: '#f4f0ff', color: '#5b21b6', fontSize: 13 }}>
+                <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, background: 'var(--p-osm-bg)', color: 'var(--p-osm)', fontSize: 13 }}>
                   Chọn đúng địa điểm OSM bên dưới hoặc bấm marker màu tím trên bản đồ. Chỉ POI được Admin chọn mới được liên kết.
                 </div>
               )}
               {placeMode === 'PARTNER' && (
-                <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, background: '#eff6ff', color: '#1e40af', fontSize: 13 }}>
+                <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, background: 'var(--p-info-bg)', color: 'var(--p-info)', fontSize: 13 }}>
                   Tọa độ ban đầu lấy từ Partner/Google Maps. Nhấn trực tiếp lên bản đồ để chỉnh và xác nhận vị trí thực tế; dữ liệu sẽ được lưu với provider = PARTNER, không giả làm OSM.
                 </div>
               )}
@@ -550,13 +552,13 @@ export default function AdminSubmissions() {
                               const active = String(selectedOsmPlaceId) === String(candidate.id);
                               return (
                                 <button key={candidate.id} type="button" onClick={() => { setSelectedOsmPlaceId(String(candidate.id)); setPlaceMode('OSM'); }}
-                                  style={{ textAlign: 'left', padding: 11, borderRadius: 11, border: active ? '2px solid #6d4bd1' : '1px solid #e2e8f0', background: active ? '#f6f2ff' : '#fff', cursor: 'pointer' }}>
-                                  <strong style={{ display: 'block', color: '#1f2937', fontSize: 13 }}>{candidate.name}</strong>
-                                  <span style={{ display: 'block', color: '#64748b', fontSize: 11, marginTop: 3 }}>{candidate.address || 'Không có địa chỉ trong OSM'}</span>
-                                  <span style={{ display: 'block', color: '#7c3aed', fontSize: 11, marginTop: 5 }}>
+                                  style={{ textAlign: 'left', padding: 11, borderRadius: 11, border: active ? '2px solid var(--p-osm)' : '1px solid var(--p-line)', background: active ? 'var(--p-osm-bg)' : 'var(--p-raised)', cursor: 'pointer' }}>
+                                  <strong style={{ display: 'block', color: 'var(--p-ink)', fontSize: 13 }}>{candidate.name}</strong>
+                                  <span style={{ display: 'block', color: 'var(--p-muted)', fontSize: 11, marginTop: 3 }}>{candidate.address || 'Không có địa chỉ trong OSM'}</span>
+                                  <span style={{ display: 'block', color: 'var(--p-osm)', fontSize: 11, marginTop: 5 }}>
                                     {candidate.providerPlaceId} · {candidate.distanceMeters == null ? 'Không rõ khoảng cách' : `${Math.round(candidate.distanceMeters)} m`}
                                   </span>
-                                  {active && <span style={{ display: 'block', marginTop: 5, color: '#6d28d9', fontWeight: 800, fontSize: 11 }}>Đang chọn</span>}
+                                  {active && <span style={{ display: 'block', marginTop: 5, color: 'var(--p-osm)', fontWeight: 800, fontSize: 11 }}>Đang chọn</span>}
                                 </button>
                               );
                             })}
@@ -594,18 +596,18 @@ export default function AdminSubmissions() {
                         if (!originalPosition || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
                         const moved = distanceMeters([Number(originalPosition.lat), Number(originalPosition.lng)], [lat, lng]);
                         return moved >= 1 ? (
-                          <p style={{ color: '#1e40af', fontSize: 12, margin: '0 0 8px' }}>
+                          <p style={{ color: 'var(--p-info)', fontSize: 12, margin: '0 0 8px' }}>
                             Đã dời <strong>{Math.round(moved)} m</strong> so với vị trí Partner gửi (ghim xám G).
                           </p>
                         ) : null;
                       })()}
-                      <p style={{ color: '#64748b', fontSize: 11, lineHeight: 1.5 }}>
+                      <p style={{ color: 'var(--p-muted)', fontSize: 11, lineHeight: 1.5 }}>
                         Nhấn lên bản đồ hoặc kéo ghim P để chỉnh vị trí; Ctrl+Z để hoàn tác.
                         Tọa độ này được lưu trên Place PARTNER; tọa độ OSM không bị sửa.
                       </p>
                     </>
                   ) : (
-                    <div className="portal-empty" style={{ minHeight: 180, border: '1px dashed #cbd5e1', borderRadius: 12 }}>
+                    <div className="portal-empty" style={{ minHeight: 180, border: '1px dashed var(--p-line)', borderRadius: 12 }}>
                       Chọn một trong hai phương án ở phía trên để xác nhận nguồn Place trước khi duyệt.
                     </div>
                   )}
@@ -640,11 +642,11 @@ export default function AdminSubmissions() {
                           </a>
                         )}
                       </>
-                    ) : <div className="portal-empty" style={{ minHeight: 260, border: '1px dashed #cbd5e1', borderRadius: 12 }}>Hồ sơ chưa có tọa độ. Nhập latitude/longitude để hiển thị bản đồ và tìm POI OSM.</div>;
+                    ) : <div className="portal-empty" style={{ minHeight: 260, border: '1px dashed var(--p-line)', borderRadius: 12 }}>Hồ sơ chưa có tọa độ. Nhập latitude/longitude để hiển thị bản đồ và tìm POI OSM.</div>;
                   })()}
                 </div>
               </div>
-              <p style={{ margin: '10px 0 0', color: '#94a3b8', fontSize: 10 }}>
+              <p style={{ margin: '10px 0 0', color: 'var(--p-faint)', fontSize: 10 }}>
                 Bản đồ nền © OpenStreetMap contributors. Việc tìm ứng viên dùng Overpass; không tìm thấy OSM không đồng nghĩa địa điểm không tồn tại ngoài thực tế.
               </p>
             </section>
@@ -656,7 +658,7 @@ export default function AdminSubmissions() {
                   {snapshotMedia.map((item, index) => (
                     <div key={item.id || index} className="portal-panel" style={{ padding: 10 }}>
                       <a href={item.mediaUrl} target="_blank" rel="noreferrer">
-                        <img src={item.thumbnailUrl || item.mediaUrl} alt={item.caption || 'Ảnh địa điểm'} style={{ width: '100%', height: 135, objectFit: 'cover', borderRadius: 9, background: '#f3f4f6' }} />
+                        <img src={item.thumbnailUrl || item.mediaUrl} alt={item.caption || 'Ảnh địa điểm'} style={{ width: '100%', height: 135, objectFit: 'cover', borderRadius: 9, background: 'var(--p-sunken)' }} />
                       </a>
                       <div style={{ fontSize: 13, marginTop: 7 }}>{item.caption || 'Ảnh địa điểm'}{item.cover ? ' · Ảnh đại diện' : ''}</div>
                     </div>
@@ -670,7 +672,7 @@ export default function AdminSubmissions() {
               {snapshotHours.length ? (
                 <div className="portal-panel" style={{ padding: 12 }}>
                   {snapshotHours.map((item, index) => (
-                    <div key={item.id || item.dayOfWeek || index} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 4px', borderBottom: '1px solid #eef0f2' }}>
+                    <div key={item.id || item.dayOfWeek || index} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 4px', borderBottom: '1px solid var(--p-line-soft)' }}>
                       <strong>{dayName(item.dayOfWeek)}</strong>
                       <span>{item.closed ? 'Đóng cửa' : `${String(item.openTime || '').slice(0, 5)} – ${String(item.closeTime || '').slice(0, 5)}`}</span>
                     </div>
@@ -700,7 +702,7 @@ export default function AdminSubmissions() {
             )}
 
             {selectedStatus === 'PENDING' ? (
-              <section style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+              <section style={{ borderTop: '1px solid var(--p-line)', paddingTop: 16 }}>
                 <label className="portal-field full">
                   <span>Ghi chú cho Partner (không bắt buộc khi duyệt, bắt buộc khi từ chối)</span>
                   <textarea rows={3} value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="Nhập phản hồi hoặc yêu cầu cập nhật thông tin..." />
@@ -708,7 +710,7 @@ export default function AdminSubmissions() {
                 {/* Lỗi phải hiện NGAY TRONG hộp thoại; thông báo ở đầu trang bị hộp thoại che mất. */}
                 {error && <div className="portal-alert error" style={{ marginTop: 10 }}>{error}</div>}
                 {!error && (placeMode === '' || (placeMode === 'OSM' && !selectedOsmPlaceId)) && (
-                  <p style={{ color: '#64748b', fontSize: 12, marginTop: 10 }}>
+                  <p style={{ color: 'var(--p-muted)', fontSize: 12, marginTop: 10 }}>
                     {placeMode === '' ? 'Chọn “Liên kết OSM” hoặc “Tạo Place PARTNER” trước khi phê duyệt.'
                       : 'Chọn một POI OSM trong danh sách/bản đồ, hoặc chuyển sang “Tạo Place PARTNER”.'}
                   </p>

@@ -4,6 +4,8 @@ import {
   AlertCircle, Check, Clock3, Edit3, EyeOff, ImagePlus, LoaderCircle,
   MapPin, Plus, RefreshCw, Send, Store, Trash2, X,
 } from 'lucide-react';
+import { SkeletonTable } from '../../components/portal/Skeleton';
+import { refreshPortalCounts } from '../../utils/portalEvents';
 import axiosClient, { getApiError } from '../../api/axiosClient';
 import { partnerApi } from '../../api/partnerApi';
 
@@ -147,12 +149,26 @@ export default function PartnerBusiness() {
     return () => URL.revokeObjectURL(previewUrl);
   }, [selectedMediaFile]);
 
+  // Link từ dashboard: ?edit=<id>&tab=<info|media|hours|notes> mở đúng địa điểm và tab cần bổ sung
+  function openFromQuery(list) {
+    const editId = searchParams.get('edit');
+    if (!editId) return;
+    const tab = searchParams.get('tab');
+    setSearchParams({}, { replace: true });
+    const item = list.find((b) => String(b.id) === editId);
+    if (!item || isPendingReview(item.verificationStatus)) return;
+    openEdit(item);
+    if (['info', 'media', 'hours', 'notes'].includes(tab)) setActiveTab(tab);
+  }
+
   const loadBusinesses = async () => {
     setLoading(true);
     setError('');
     try {
       const result = await partnerApi.getBusinesses();
-      setBusinesses(unwrapList(result));
+      const list = unwrapList(result);
+      setBusinesses(list);
+      openFromQuery(list);
     } catch (err) {
       setError(getApiError(err, 'Không tải được danh sách địa điểm.'));
     } finally {
@@ -290,6 +306,7 @@ export default function PartnerBusiness() {
     setNotice('');
     try {
       await partnerApi.submitBusiness(item.id);
+      refreshPortalCounts();
       setNotice(`Đã gửi "${item.name}" để xét duyệt.`);
       await loadBusinesses();
     } catch (err) {
@@ -511,7 +528,6 @@ export default function PartnerBusiness() {
     <div className="portal-page">
       <div className="portal-page-heading">
         <div>
-          <div className="portal-eyebrow">PLACE DIRECTORY</div>
           <h1>Địa điểm của tôi</h1>
           <p>Khai báo và cập nhật thông tin địa điểm để cung cấp dữ liệu chính xác cho khách du lịch.</p>
         </div>
@@ -537,7 +553,7 @@ export default function PartnerBusiness() {
           <span className="portal-muted-label">Dữ liệu của tài khoản đang đăng nhập</span>
         </div>
         {loading ? (
-          <div className="portal-empty"><LoaderCircle className="portal-spin" size={24} />Đang tải dữ liệu...</div>
+          <SkeletonTable rows={5} columns={5} label="Đang tải địa điểm" />
         ) : filteredBusinesses.length === 0 ? (
           <div className="portal-empty">
             <div className="portal-empty-icon"><Store size={26} /></div>
@@ -583,14 +599,14 @@ export default function PartnerBusiness() {
           <div className="portal-modal portal-business-form" style={{ width: 'min(980px, 96vw)', maxHeight: '92vh', overflowY: 'auto' }}>
             <div className="portal-modal-header">
               <div>
-                <div className="portal-eyebrow">PLACE INFORMATION</div>
+                <div className="portal-eyebrow">Hồ sơ địa điểm</div>
                 <h2>{editingId ? 'Quản lý địa điểm' : 'Thêm địa điểm mới'}</h2>
                 <p>{pending ? 'Hồ sơ đang chờ Admin xét duyệt và được khóa chỉnh sửa.' : 'Hoàn thiện thông tin, ảnh, giờ hoạt động và ghi chú trước khi gửi duyệt.'}</p>
               </div>
               <button type="button" className="portal-icon-button" onClick={() => setModalOpen(false)} aria-label="Đóng" disabled={saving || childSaving}><X size={20} /></button>
             </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18, borderBottom: '1px solid #e5e7eb', paddingBottom: 12 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18, borderBottom: '1px solid var(--p-line)', paddingBottom: 12 }}>
               {[
                 ['info', 'Thông tin cơ bản'], ['media', 'Hình ảnh'], ['hours', 'Giờ hoạt động'], ['notes', 'Ghi chú & giá'],
               ].map(([key, label]) => (
@@ -654,7 +670,7 @@ export default function PartnerBusiness() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 18 }}>
                       {media.map((item) => (
                         <div key={item.id} className="portal-panel" style={{ padding: 10 }}>
-                          <img src={item.thumbnailUrl || item.mediaUrl} alt={item.caption || 'Ảnh địa điểm'} style={{ width: '100%', height: 125, objectFit: 'cover', borderRadius: 10, background: '#f3f4f6' }} />
+                          <img src={item.thumbnailUrl || item.mediaUrl} alt={item.caption || 'Ảnh địa điểm'} style={{ width: '100%', height: 125, objectFit: 'cover', borderRadius: 10, background: 'var(--p-sunken)' }} />
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8 }}>
                             <span style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{item.caption || 'Ảnh địa điểm'}{item.cover ? ' · Ảnh đại diện' : ''}</span>
                             <button type="button" className="portal-small-button danger" onClick={() => deleteMedia(item)} disabled={childSaving || pending} title="Xóa ảnh"><Trash2 size={14} /></button>
@@ -674,7 +690,7 @@ export default function PartnerBusiness() {
                         {mediaPreviewUrl && (
                           <div className="portal-field full">
                             <span>Xem trước</span>
-                            <img src={mediaPreviewUrl} alt="Ảnh đang chọn" style={{ maxWidth: '100%', width: 260, maxHeight: 180, objectFit: 'cover', borderRadius: 10, border: '1px solid #e5e7eb' }} />
+                            <img src={mediaPreviewUrl} alt="Ảnh đang chọn" style={{ maxWidth: '100%', width: 260, maxHeight: 180, objectFit: 'cover', borderRadius: 10, border: '1px solid var(--p-line)' }} />
                             <small className="portal-muted-label">{selectedMediaFile?.name}</small>
                           </div>
                         )}
@@ -696,7 +712,7 @@ export default function PartnerBusiness() {
                     {hours.map((item) => {
                       const dayLabel = DAYS.find(([day]) => day === item.dayOfWeek)?.[1] || `Ngày ${item.dayOfWeek}`;
                       return (
-                        <div key={item.dayOfWeek} style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 1fr) minmax(110px, 1fr) minmax(110px, 1fr) auto', gap: 12, alignItems: 'center', padding: '10px 4px', borderBottom: '1px solid #eef0f2' }}>
+                        <div key={item.dayOfWeek} style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 1fr) minmax(110px, 1fr) minmax(110px, 1fr) auto', gap: 12, alignItems: 'center', padding: '10px 4px', borderBottom: '1px solid var(--p-line-soft)' }}>
                           <strong>{dayLabel}</strong>
                           <label className="portal-field"><span>Mở cửa</span><input type="time" value={item.openTime || ''} onChange={(e) => updateHour(item.dayOfWeek, 'openTime', e.target.value)} disabled={pending || item.closed} /></label>
                           <label className="portal-field"><span>Đóng cửa</span><input type="time" value={item.closeTime || ''} onChange={(e) => updateHour(item.dayOfWeek, 'closeTime', e.target.value)} disabled={pending || item.closed} /></label>
