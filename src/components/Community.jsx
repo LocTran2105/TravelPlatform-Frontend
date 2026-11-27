@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import {
   Compass, MapPin, Image as ImageIcon, Send,
-  Heart, MessageCircle, Share2, X, MoreHorizontal, Pencil, Trash2,
+  Heart, MessageCircle, Share2, X, MoreHorizontal, Pencil, Trash2, Flag,
   ChevronLeft, ChevronRight, Play
 } from 'lucide-react';
 import FollowButton from './FollowButton';
 import UserMenu from './UserMenu';
 import CommentSection from './CommentSection';
+import ReportDialog from './ReportDialog';
 import { formatCount, formatCountFull } from './formatCount';
 
 const API = 'http://localhost:8080/api';
@@ -94,7 +95,8 @@ const formatDate = (value) => {
 // Menu 3 chấm (chỉ hiện với bài của chính mình)
 // ---------------------------------------------------------------------------
 
-const PostMenu = ({ onEdit, onDelete }) => {
+// Chủ bài: onEdit + onDelete. Người khác (đã đăng nhập): chỉ onReport.
+const PostMenu = ({ onEdit, onDelete, onReport, reported = false }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
 
@@ -132,22 +134,37 @@ const PostMenu = ({ onEdit, onDelete }) => {
           role="menu"
           className="absolute right-0 top-9 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
         >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => { setOpen(false); onEdit(); }}
-            className="flex w-full items-center gap-2.5 border-b border-slate-100 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            <Pencil className="h-4 w-4" /> Chỉnh sửa
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => { setOpen(false); onDelete(); }}
-            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
-          >
-            <Trash2 className="h-4 w-4" /> Xóa bài
-          </button>
+          {onEdit && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); onEdit(); }}
+              className="flex w-full items-center gap-2.5 border-b border-slate-100 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Pencil className="h-4 w-4" /> Chỉnh sửa
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); onDelete(); }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" /> Xóa bài
+            </button>
+          )}
+          {onReport && (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={reported}
+              onClick={() => { setOpen(false); onReport(); }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-default disabled:text-slate-400 disabled:hover:bg-white"
+            >
+              <Flag className="h-4 w-4" /> {reported ? 'Đã báo cáo' : 'Báo cáo bài viết'}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -410,6 +427,8 @@ const Community = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingPost, setEditingPost] = useState(null);
+  const [reportTarget, setReportTarget] = useState(null);          // { type, id, label } đang báo cáo
+  const [reportedPostIds, setReportedPostIds] = useState(() => new Set());
 
   // Phân trang: nextCursor = id bài cuối của trang đã tải, gửi lại làm "before"
   const [feedSort, setFeedSort] = useState(readStoredSort);
@@ -1112,11 +1131,17 @@ const Community = () => {
                         </div>
                       )}
 
-                      {/* Menu 3 chấm: chỉ chủ bài mới có Sửa / Xóa */}
+                      {/* Menu 3 chấm: chủ bài có Sửa / Xóa, người khác (đã đăng nhập) có Báo cáo */}
                       {own && (
                         <PostMenu
                           onEdit={() => setEditingPost(post)}
                           onDelete={() => handleDeletePost(post)}
+                        />
+                      )}
+                      {user && !own && (
+                        <PostMenu
+                          reported={reportedPostIds.has(post.id)}
+                          onReport={() => setReportTarget({ type: 'POST', id: post.id, label: 'bài viết này' })}
                         />
                       )}
                     </div>
@@ -1224,6 +1249,12 @@ const Community = () => {
           onSaved={handlePostSaved}
         />
       )}
+
+      <ReportDialog
+        target={reportTarget}
+        onClose={() => setReportTarget(null)}
+        onReported={(target) => setReportedPostIds((prev) => new Set(prev).add(target.id))}
+      />
     </div>
   );
 };

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { Send, CornerDownRight } from 'lucide-react';
+import ReportDialog from './ReportDialog';
 
 const API = 'http://localhost:8080/api/posts';
 const MAX_LENGTH = 1000; // khớp CommentService.MAX_CONTENT_LENGTH ở backend
@@ -43,7 +44,7 @@ const countAll = (comments) =>
 // Phải khai báo Ở NGOÀI CommentSection: trước đây khai báo bên trong nên mỗi
 // lần gõ một ký tự là toàn bộ danh sách bị tạo lại từ đầu (mất trạng thái).
 // ---------------------------------------------------------------------------
-const CommentItem = ({ comment, isReply = false, canInteract, onReply, onEdit, onDelete }) => (
+const CommentItem = ({ comment, isReply = false, canInteract, reportedIds, onReply, onEdit, onDelete, onReport }) => (
   <div className={`mt-4 flex gap-3 ${isReply ? 'ml-10' : ''}`}>
     <Link
       to={`/profile/${comment.authorUsername}`}
@@ -91,6 +92,15 @@ const CommentItem = ({ comment, isReply = false, canInteract, onReply, onEdit, o
             Xóa
           </button>
         )}
+        {canInteract && !comment.isMyComment && (
+          reportedIds.has(comment.id) ? (
+            <span className="text-slate-400">Đã báo cáo</span>
+          ) : (
+            <button type="button" onClick={() => onReport(comment)} className="hover:text-red-600">
+              Báo cáo
+            </button>
+          )
+        )}
       </div>
 
       {comment.replies?.length > 0 && (
@@ -101,9 +111,11 @@ const CommentItem = ({ comment, isReply = false, canInteract, onReply, onEdit, o
               comment={reply}
               isReply
               canInteract={canInteract}
+              reportedIds={reportedIds}
               onReply={onReply}
               onEdit={onEdit}
               onDelete={onDelete}
+              onReport={onReport}
             />
           ))}
         </div>
@@ -126,6 +138,8 @@ export default function CommentSection({ postId, currentUser, onCountChange }) {
   const [editingId, setEditingId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [reportTarget, setReportTarget] = useState(null);       // { type, id, label } đang báo cáo
+  const [reportedIds, setReportedIds] = useState(() => new Set()); // id bình luận đã báo cáo trong phiên này
 
   const loggedIn = Boolean(localStorage.getItem('token')) && Boolean(currentUser);
 
@@ -236,6 +250,14 @@ export default function CommentSection({ postId, currentUser, onCountChange }) {
     setInputValue(comment.content);
   };
 
+  const startReport = (comment) => {
+    setReportTarget({ type: 'POST_COMMENT', id: comment.id, label: 'bình luận này' });
+  };
+
+  const handleReported = (target) => {
+    setReportedIds((prev) => new Set(prev).add(target.id));
+  };
+
   const total = countAll(comments);
 
   return (
@@ -251,9 +273,11 @@ export default function CommentSection({ postId, currentUser, onCountChange }) {
               key={comment.id}
               comment={comment}
               canInteract={loggedIn}
+              reportedIds={reportedIds}
               onReply={startReply}
               onEdit={startEdit}
               onDelete={handleDelete}
+              onReport={startReport}
             />
           ))
         ) : (
@@ -319,6 +343,8 @@ export default function CommentSection({ postId, currentUser, onCountChange }) {
           {' '}để bình luận và trả lời.
         </p>
       )}
+
+      <ReportDialog target={reportTarget} onClose={() => setReportTarget(null)} onReported={handleReported} />
     </div>
   );
 }

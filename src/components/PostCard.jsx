@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText, Heart, MessageCircle, MapPin, Play, Images } from 'lucide-react';
+import { FileText, Heart, MessageCircle, MapPin, Play, Images, EyeOff } from 'lucide-react';
 import { visibilityInfo } from '../utils/trips';
 import { cloudinaryResize } from '../utils/cover';
 import { getMedia, formatPostDate } from '../utils/posts';
@@ -22,6 +22,9 @@ export default function PostCard({ post, canManage = false, onOpen }) {
   const [failedUrl, setFailedUrl] = useState(null);
   const showImage = first?.type === 'IMAGE' && failedUrl !== first.url;
 
+  // Chỉ chủ bài nhận moderationStatus từ backend: bài bị kiểm duyệt viên ẩn thì đánh dấu rõ
+  const hidden = post.moderationStatus === 'HIDDEN';
+
   const label = post.caption ? `Mở bài viết: ${post.caption.slice(0, 60)}` : 'Mở bài viết';
 
   return (
@@ -37,7 +40,7 @@ export default function PostCard({ post, canManage = false, onOpen }) {
       className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white outline-none transition-all hover:border-slate-200 hover:shadow-xl hover:shadow-slate-200/50 focus-visible:ring-2 focus-visible:ring-[#FF5645]"
     >
       {/* Ảnh / video đầu tiên */}
-      <div className="relative h-36 w-full overflow-hidden bg-slate-200 sm:h-44">
+      <div className={`relative h-36 w-full overflow-hidden bg-slate-200 sm:h-44 ${hidden ? 'opacity-60' : ''}`}>
         {showImage ? (
           <img
             src={cloudinaryResize(first.url, 800, 480)}
@@ -71,6 +74,15 @@ export default function PostCard({ post, canManage = false, onOpen }) {
           </span>
         )}
       </div>
+
+      {hidden && (
+        <span
+          className="absolute left-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white shadow"
+          title="Bài viết đã bị kiểm duyệt viên ẩn khỏi cộng đồng. Chỉ mình bạn thấy."
+        >
+          <EyeOff className="h-3 w-3" /> Đã bị ẩn
+        </span>
+      )}
 
       {/* Nội dung */}
       <div className="flex flex-1 flex-col p-4">

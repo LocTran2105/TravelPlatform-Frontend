@@ -19,6 +19,7 @@ import CoverImagePicker from './CoverImagePicker';
 import { usePlaceCovers, usePlaceActivity, getDestPlaceId } from './PlaceHoverPreview';
 import ItineraryDay from './ItineraryDay';
 import PlaceInfoPanel, { MediaPicker } from './PlaceInfoPanel';
+import ReportDialog from './ReportDialog';
 import TripMap from './TripMap';
 import ExpenseDialogs from './ExpenseDialogs';
 import { presetForDay } from '../utils/directions';
@@ -229,6 +230,9 @@ const TripDetail = () => {
   const [placeReviews, setPlaceReviews] = useState([]); 
   const [placePosts, setPlacePosts] = useState([]); 
   const [infoTab, setInfoTab] = useState('intro');
+  // Báo cáo đánh giá địa điểm vi phạm: reportTarget = đánh giá đang mở hộp thoại; reportedReviewIds = các đánh giá đã báo cáo trong phiên này
+  const [reportTarget, setReportTarget] = useState(null);
+  const [reportedReviewIds, setReportedReviewIds] = useState(() => new Set());
 
   // ================= STATES CHO FORM ĐÁNH GIÁ ĐỊA ĐIỂM =================
   const [newReviewText, setNewReviewText] = useState('');
@@ -1114,6 +1118,16 @@ const TripDetail = () => {
     }
   };
 
+  const openReviewReport = (review) => {
+    if (!review?.id || reportedReviewIds.has(review.id)) return;
+    const place = activeDestination?.placeName;
+    setReportTarget({
+      type: 'PLACE_REVIEW',
+      id: review.id,
+      label: `đánh giá của ${review.authorName || 'người dùng'}${place ? ` về ${place}` : ''}`,
+    });
+  };
+
   const toggleLikeReview = async (reviewId) => {
     try {
       const token = localStorage.getItem('token');
@@ -1835,6 +1849,8 @@ const TripDetail = () => {
           visibleReviewsCount={visibleReviewsCount}
           toggleLikeReview={toggleLikeReview}
           setVisibleReviewsCount={setVisibleReviewsCount}
+          onReportReview={openReviewReport}
+          reportedReviewIds={reportedReviewIds}
         />
 
         <TripMap
@@ -2001,6 +2017,12 @@ const TripDetail = () => {
           onClose={() => { setShareModalView(null); setMembersReload((n) => n + 1); }}
         />
       )}
+
+      <ReportDialog
+        target={reportTarget}
+        onClose={() => setReportTarget(null)}
+        onReported={(t) => setReportedReviewIds((prev) => new Set(prev).add(t.id))}
+      />
 
       {/* AI Travel Assistant dạng bong bóng nổi, dùng được ở mọi tab của TripDetail. */}
       {trip?.id && !isViewer && (

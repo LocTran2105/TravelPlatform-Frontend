@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { X, Heart, MessageCircle, MapPin } from 'lucide-react';
+import { X, Heart, MessageCircle, MapPin, Flag, EyeOff } from 'lucide-react';
 import { visibilityInfo } from '../utils/trips';
 import { getMedia, formatPostDateTime } from '../utils/posts';
 import { formatCount, formatCountFull } from './formatCount';
 import MediaGallery from './MediaGallery';
 import CommentSection from './CommentSection';
+import ReportDialog from './ReportDialog';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), video[controls], [tabindex]:not([tabindex="-1"])';
 
@@ -26,6 +27,8 @@ export default function PostDialog({ post, currentUser, showVisibility = false, 
   const VisIcon = info.Icon;
   const dialogRef = useRef(null);
   const [heartPop, setHeartPop] = useState(false);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [reported, setReported] = useState(false);
   const popTimer = useRef(null);
   // Giữ onClose mới nhất trong ref để effect bên dưới chỉ chạy đúng 1 lần (không cướp tiêu điểm khi render lại)
   const onCloseRef = useRef(onClose);
@@ -75,6 +78,10 @@ export default function PostDialog({ post, currentUser, showVisibility = false, 
   const likes = Number(post.likeCount) || 0;
   const comments = Number(post.commentCount) || 0;
   const hasMedia = media.length > 0;
+  // Bài của chính mình (relationship = SELF) thì không báo cáo; khách chưa đăng nhập cũng không
+  const canReport = Boolean(currentUser) && post.relationship !== 'SELF';
+  // Chỉ chủ bài nhận moderationStatus / moderationNote từ backend
+  const hiddenByModerator = post.moderationStatus === 'HIDDEN';
   const initial = (post.authorName || post.authorUsername || '?').charAt(0).toUpperCase();
 
   return createPortal(
@@ -138,6 +145,17 @@ export default function PostDialog({ post, currentUser, showVisibility = false, 
 
           {/* Nội dung + bình luận (cuộn) */}
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+            {hiddenByModerator && (
+              <div role="status" className="mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <EyeOff className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-bold">Bài viết này đã bị kiểm duyệt viên ẩn khỏi cộng đồng.</p>
+                  {post.moderationNote && <p className="mt-0.5 break-words">Lý do: {post.moderationNote}</p>}
+                  <p className="mt-0.5 text-xs text-red-600/80">Chỉ mình bạn còn thấy bài này. Bạn không thể chỉnh sửa nhưng vẫn có thể xóa.</p>
+                </div>
+              </div>
+            )}
+
             {post.caption ? (
               <p className="mt-4 whitespace-pre-wrap break-words text-base text-slate-800">{post.caption}</p>
             ) : (
@@ -170,6 +188,21 @@ export default function PostDialog({ post, currentUser, showVisibility = false, 
                 <MessageCircle className="h-6 w-6" />
                 <span className="text-sm font-semibold">{comments > 0 ? formatCount(comments) : 'Bình luận'}</span>
               </span>
+              {canReport && (
+                reported ? (
+                  <span className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+                    <Flag className="h-4 w-4" /> Đã báo cáo
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setReportTarget({ type: 'POST', id: post.id, label: 'bài viết này' })}
+                    className="ml-auto flex items-center gap-1.5 text-xs font-semibold text-slate-500 transition-colors hover:text-red-600"
+                  >
+                    <Flag className="h-4 w-4" /> Báo cáo
+                  </button>
+                )
+              )}
             </div>
             {notice && <p role="alert" className="mt-2 text-sm font-medium text-red-600">{notice}</p>}
 
@@ -182,6 +215,8 @@ export default function PostDialog({ post, currentUser, showVisibility = false, 
           </div>
         </div>
       </div>
+
+      <ReportDialog target={reportTarget} onClose={() => setReportTarget(null)} onReported={() => setReported(true)} />
     </div>,
     document.body
   );

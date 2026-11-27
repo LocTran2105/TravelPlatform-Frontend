@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Plus, Search, X, Share2, MoreHorizontal, ChevronLeft, ChevronRight, MessageSquare, Star, Send,
-  Play, Image as ImageIcon
+  Plus, Search, X, MoreHorizontal, ChevronLeft, ChevronRight, MessageSquare, Star, Send,
+  Play, Image as ImageIcon, Flag
 } from 'lucide-react';
 
 // Panel chi tiết địa điểm nổi trên bản đồ của TripDetail. Chỉ hiển thị: state và handler nằm ở TripDetail.
@@ -198,12 +198,74 @@ const getInitial = (name) => {
   return name.charAt(0).toUpperCase();
 };
 
+// Menu 3 chấm của một đánh giá: hiện mục "Báo cáo đánh giá" (hoặc "Đã báo cáo" sau khi đã gửi).
+// Đóng khi bấm ra ngoài hoặc nhấn Esc.
+const ReviewMenu = ({ review, reported, onReport }) => {
+  const [open, setOpen] = useState(false);
+  const [openUp, setOpenUp] = useState(false); // true = mở lên phía trên khi sát đáy khung cuộn
+  const rootRef = useRef(null);
+
+  const toggle = () => {
+    if (!open) {
+      // Menu cao ~56px: nếu phía dưới nút không đủ chỗ trong khung cuộn của panel thì mở ngược lên
+      const root = rootRef.current;
+      const scroller = root?.closest('.overflow-y-auto');
+      const bottomLimit = scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight;
+      setOpenUp(Boolean(root) && root.getBoundingClientRect().bottom + 64 > bottomLimit);
+    }
+    setOpen((v) => !v);
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label="Tuỳ chọn đánh giá"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="text-slate-400 hover:bg-slate-100 p-1 rounded-full"
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </button>
+      {open && (
+        <div role="menu" className={`absolute right-0 ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'} w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-1.5 z-10 overflow-hidden`}>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={reported}
+            onClick={() => { setOpen(false); onReport(review); }}
+            className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition-colors ${
+              reported ? 'text-slate-400 cursor-default' : 'text-rose-600 hover:bg-rose-50'
+            }`}
+          >
+            <Flag className="w-4 h-4 shrink-0" />
+            {reported ? 'Đã báo cáo' : 'Báo cáo đánh giá'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PlaceInfoPanel = ({
   activeDestination, isPanelOpen, coverImage, setIsPanelOpen, setInfoTab, infoTab, placeReviews,
   placePosts, placeInfo, reviewStats, showReviewForm, setShowReviewForm, setNewReviewRating,
   newReviewRating, newReviewText, setNewReviewText, newReviewFiles, setNewReviewFiles,
   isSubmittingReview, submitReview, uploadLabel, visibleReviewsCount, toggleLikeReview,
-  setVisibleReviewsCount
+  setVisibleReviewsCount, onReportReview, reportedReviewIds
 }) => {
   return (
     <div className={`absolute top-4 left-4 bottom-4 w-[400px] bg-white rounded-3xl shadow-2xl z-[1000] border border-slate-100 flex flex-col overflow-hidden transition-transform duration-500 ease-in-out ${activeDestination && isPanelOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : '-translate-x-[120%] opacity-0 pointer-events-none'}`}>
@@ -362,7 +424,13 @@ const PlaceInfoPanel = ({
                                 <span className="text-[11px] text-slate-500 flex items-center gap-1">Hướng dẫn viên địa phương • 1 bài đánh giá</span>
                               </div>
                             </div>
-                            <button className="text-slate-400 hover:bg-slate-100 p-1 rounded-full"><MoreHorizontal className="w-4 h-4" /></button>
+                            {onReportReview && (
+                              <ReviewMenu
+                                review={review}
+                                reported={Boolean(reportedReviewIds?.has(review.id))}
+                                onReport={onReportReview}
+                              />
+                            )}
                           </div>
 
                           {/* Rating & Date */}
@@ -377,14 +445,11 @@ const PlaceInfoPanel = ({
                           {review.content && <p className="text-[14px] text-slate-700 mb-4 leading-relaxed">{review.content}</p>}
                           <ReviewMediaGrid media={review.media} />
                           
-                          {/* Actions (Thích / Chia sẻ) */}
+                          {/* Actions (Thích) */}
                           <div className="flex items-center gap-6 pt-1">
                             <button onClick={() => toggleLikeReview(review.id)} className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${review.likedByMe ? 'text-cyan-600' : 'text-slate-600 hover:text-slate-900'}`}>
                               <svg className={`w-4 h-4 ${review.likedByMe ? 'fill-cyan-600' : 'fill-none stroke-current'}`} viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
                               Thích {review.likesCount > 0 ? `(${review.likesCount})` : ''}
-                            </button>
-                            <button className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900">
-                              <Share2 className="w-4 h-4" /> Chia sẻ
                             </button>
                           </div>
                         </div>
