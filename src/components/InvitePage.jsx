@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import {
-  Compass,
   MapPin,
   Calendar,
   UserRound,
@@ -14,6 +13,7 @@ import {
 } from 'lucide-react';
 import { withRedirect } from '../utils/redirect';
 import { API_BASE_URL } from '../config/api';
+import SiteHeader from './site/SiteHeader';
 
 const API = API_BASE_URL;
 
@@ -138,11 +138,7 @@ const InvitePage = () => {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-slate-50 font-sans text-slate-900 antialiased">
-      <header className="border-b border-slate-100 bg-white p-5">
-        <Link to="/" className="inline-flex items-center gap-2 text-lg font-bold text-slate-900 hover:opacity-80">
-          <Compass className="h-7 w-7 text-[#FF5645]" /> TravelPlatform
-        </Link>
-      </header>
+      <SiteHeader search={false} />
 
       <main className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-md rounded-2xl border border-slate-100 bg-white p-7 shadow-xl shadow-slate-200/60 sm:p-8">

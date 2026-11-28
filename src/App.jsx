@@ -7,6 +7,7 @@ import {
 
 import useRoleSync from './utils/useRoleSync';
 import Toaster from './components/Toaster';
+import SiteThemeRoot from './components/site/SiteThemeRoot';
 
 // Traveller
 import Home from './components/Home';
@@ -43,6 +44,8 @@ import AdminBusinesses from './pages/admin/AdminBusinesses';
 // CSS
 import './styles/partner-admin.css';
 import './styles/portal.css';
+import './styles/site.css';
+import './styles/site-dark.css';
 
 //Report
 import ModeratorLayout from './layouts/ModeratorLayout';
@@ -59,6 +62,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <SiteThemeRoot />
       <Toaster />
       <Routes>
 

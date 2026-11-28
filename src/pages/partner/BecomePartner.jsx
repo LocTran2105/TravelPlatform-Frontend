@@ -1,11 +1,9 @@
 import { Link } from 'react-router-dom';
 import {
-  ArrowLeft,
   ArrowRight,
   BadgeCheck,
   Building2,
   CalendarClock,
-  Compass,
   FileCheck2,
   FileText,
   MapPin,
@@ -17,6 +15,7 @@ import {
 } from 'lucide-react';
 import { getStoredUser, normalizeRole } from '../../utils/auth.jsx';
 import { withRedirect } from '../../utils/redirect';
+import SiteHeader from '../../components/site/SiteHeader';
 
 // Trang giới thiệu CÔNG KHAI cho đơn vị kinh doanh muốn trở thành đối tác.
 // Ai cũng xem được; việc lọc đơn vị hợp lệ (mã số thuế, giấy phép, địa chỉ) nằm ở khâu Admin xét duyệt.
@@ -94,27 +93,11 @@ export default function BecomePartner() {
   const action = getPrimaryAction(user);
 
   return (
-    <div className="min-h-screen w-full bg-white font-sans text-slate-900 antialiased">
-      {/* Header gọn: logo + quay lại trang chủ */}
-      <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FF5645] text-white shadow-sm">
-              <Compass className="h-5 w-5" />
-            </div>
-            <span className="text-lg font-extrabold tracking-tight">TravelPlatform</span>
-            <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-              Đối tác
-            </span>
-          </Link>
-          <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-900">
-            <ArrowLeft className="h-4 w-4" /> Trang chủ
-          </Link>
-        </div>
-      </header>
+    <div className="tp-site min-h-screen w-full antialiased">
+      <SiteHeader />
 
       {/* Hero */}
-      <section className="bg-gradient-to-b from-orange-50 to-white">
+      <section className="overflow-hidden bg-gradient-to-b from-orange-50 to-white">
         <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.2fr_1fr] md:items-center md:py-20">
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-bold text-[#FF5645] shadow-sm ring-1 ring-orange-100">
@@ -132,7 +115,7 @@ export default function BecomePartner() {
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
                 to={action.to}
-                className="inline-flex items-center gap-2 rounded-full bg-[#FF5645] px-6 py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#E04B3B] active:scale-95"
+                className="tp-btn-primary px-6 py-3 text-sm"
               >
                 {action.label} <ArrowRight className="h-4 w-4" />
               </Link>
@@ -242,7 +225,7 @@ export default function BecomePartner() {
           </p>
           <Link
             to={action.to}
-            className="inline-flex items-center gap-2 rounded-full bg-[#FF5645] px-6 py-3 text-sm font-bold text-white transition-all hover:bg-[#E04B3B] active:scale-95"
+            className="tp-btn-primary px-6 py-3 text-sm"
           >
             {action.label} <ArrowRight className="h-4 w-4" />
           </Link>

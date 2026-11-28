@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { Compass, Pencil, FileText } from 'lucide-react';
-import UserMenu from './UserMenu';
+import SiteHeader from './site/SiteHeader';
 import FollowButton from './FollowButton';
 import FollowListModal from './FollowListModal';
 import TripCard from './TripCard';
@@ -196,18 +196,8 @@ const PublicProfile = () => {
   if (!profileUser) return <div className="text-center mt-20 font-bold text-xl">Không tìm thấy người dùng.</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-2">
-            <Compass className="h-6 w-6 text-[#FF5645]" />
-            <span className="text-xl font-black">TravelPlatform</span>
-          </Link>
-          <div className="ml-auto">
-             {currentUser ? <UserMenu user={currentUser} onLogout={() => { localStorage.clear(); navigate('/login'); }} /> : <Link to="/login" className="font-bold text-[#FF5645]">Đăng nhập</Link>}
-          </div>
-        </div>
-      </header>
+    <div className="tp-site min-h-screen !bg-slate-50 text-slate-900">
+      <SiteHeader search={false} onLogout={() => { localStorage.clear(); navigate('/login'); }} />
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 flex flex-col md:flex-row gap-8">
         

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bell, CheckCheck } from 'lucide-react';
-import UserMenu from '../components/UserMenu';
+import { useNavigate } from 'react-router-dom';
+import { Bell, CheckCheck } from 'lucide-react';
 import NotificationItem from '../components/NotificationItem';
 import notificationsApi from '../api/notificationsApi';
 import { safeInternalLink } from '../utils/notificationText';
 import { notifyNotificationsChanged } from '../utils/useNotifications';
+import SiteHeader from '../components/site/SiteHeader';
 
 const PAGE_SIZE = 20;
 
@@ -136,15 +136,7 @@ export default function Notifications() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
-          <Link to="/" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-emerald-600">
-            <ArrowLeft className="h-4 w-4" />
-            Trang chủ
-          </Link>
-          <UserMenu user={user} />
-        </div>
-      </header>
+      <SiteHeader search={false} user={user} />
 
       <main className="mx-auto max-w-3xl px-4 py-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

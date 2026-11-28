@@ -132,7 +132,7 @@ const UserSearchBox = () => {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Search users by name or username..."
+          placeholder="Tìm người dùng"
           autoComplete="off"
           maxLength={50}
           aria-label="Tìm người dùng theo tên hoặc username"

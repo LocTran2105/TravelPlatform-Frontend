@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { User, Lock, Mail, Phone, Compass, ArrowLeft, Camera, CheckCircle2, AlertCircle, AtSign } from 'lucide-react';
+import { User, Lock, Mail, Phone, Camera, CheckCircle2, AlertCircle, AtSign } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
+import SiteHeader from './site/SiteHeader';
 
 const USERNAME_REGEX = /^[a-z0-9][a-z0-9._-]{1,8}[a-z0-9]$/;
 
@@ -127,18 +128,7 @@ const Profile = () => {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
       {/* Header đơn giản */}
-      <header className="bg-white px-6 py-4 shadow-sm">
-        <div className="mx-auto flex max-w-5xl items-center gap-4">
-          <Link to="/home" className="flex items-center gap-2 text-slate-500 hover:text-emerald-600">
-            <ArrowLeft className="h-5 w-5" />
-            <span className="text-sm font-medium">Quay lại</span>
-          </Link>
-          <div className="ml-auto flex items-center gap-2">
-            <Compass className="h-6 w-6 text-emerald-500" />
-            <span className="font-bold text-slate-900">TravelPlatform</span>
-          </div>
-        </div>
-      </header>
+      <SiteHeader search={false} />
 
       <main className="mx-auto mt-8 max-w-5xl px-6 pb-20">
         <h1 className="text-2xl font-bold text-slate-900">Chỉnh sửa thông tin</h1>
@@ -150,7 +140,7 @@ const Profile = () => {
               <button
                 onClick={() => { setActiveTab('info'); setMessage({ type: '', text: '' }); }}
                 className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-                  activeTab === 'info' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'
+                  activeTab === 'info' ? 'bg-orange-50 text-[#E04B3B]' : 'text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 <User className="h-4.5 w-4.5" /> Thông tin cá nhân
@@ -158,7 +148,7 @@ const Profile = () => {
               <button
                 onClick={() => { setActiveTab('password'); setMessage({ type: '', text: '' }); }}
                 className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-                  activeTab === 'password' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'
+                  activeTab === 'password' ? 'bg-orange-50 text-[#E04B3B]' : 'text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 <Lock className="h-4.5 w-4.5" /> Đổi mật khẩu
@@ -180,7 +170,7 @@ const Profile = () => {
             {activeTab === 'info' ? (
               <form onSubmit={handleUpdateInfo} className="max-w-md space-y-5">
                 <div className="mb-8 flex items-center gap-5">
-                  <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-2xl font-bold text-emerald-700">
+                  <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-orange-100 text-2xl font-bold text-[#c43d2f]">
                     {user.fullName?.charAt(0).toUpperCase()}
                     <button type="button" className="absolute bottom-0 right-0 rounded-full border-2 border-white bg-slate-100 p-1.5 text-slate-600 hover:bg-slate-200">
                       <Camera className="h-3.5 w-3.5" />
@@ -204,7 +194,7 @@ const Profile = () => {
                   <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-700">Họ và tên</label>
                   <div className="relative">
                     <User className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-                    <input type="text" value={formData.fullName} onChange={(e) => setFormData({...formData, fullName: e.target.value})} required className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none" />
+                    <input type="text" value={formData.fullName} onChange={(e) => setFormData({...formData, fullName: e.target.value})} required className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-[#FF5645] focus:bg-white focus:outline-none" />
                   </div>
                 </div>
 
@@ -212,7 +202,7 @@ const Profile = () => {
                   <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-700">Số điện thoại</label>
                   <div className="relative">
                     <Phone className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-                    <input type="tel" value={formData.phoneNumber} onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none" />
+                    <input type="tel" value={formData.phoneNumber} onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-[#FF5645] focus:bg-white focus:outline-none" />
                   </div>
                 </div>
 
@@ -229,7 +219,7 @@ const Profile = () => {
                       maxLength={10}
                       required
                       placeholder="vd: loc.106"
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-[#FF5645] focus:bg-white focus:outline-none"
                     />
                   </div>
                   <p className="mt-1.5 text-xs text-slate-500">
@@ -237,7 +227,7 @@ const Profile = () => {
                   </p>
                 </div>
 
-                <button type="submit" disabled={isLoading} className="mt-4 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60">
+                <button type="submit" disabled={isLoading} className="tp-btn-primary mt-4 px-6 py-2.5 text-sm disabled:opacity-60">
                   {isLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
                 </button>
               </form>
@@ -247,25 +237,25 @@ const Profile = () => {
                   <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-700">Mật khẩu hiện tại</label>
                   <div className="relative">
                     <Lock className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-                    <input type="password" value={passwordData.oldPassword} onChange={(e) => setPasswordData({...passwordData, oldPassword: e.target.value})} required className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none" />
+                    <input type="password" value={passwordData.oldPassword} onChange={(e) => setPasswordData({...passwordData, oldPassword: e.target.value})} required className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-[#FF5645] focus:bg-white focus:outline-none" />
                   </div>
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-700">Mật khẩu mới</label>
                   <div className="relative">
                     <Lock className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-                    <input type="password" value={passwordData.newPassword} onChange={(e) => setPasswordData({...passwordData, newPassword: e.target.value})} required className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none" />
+                    <input type="password" value={passwordData.newPassword} onChange={(e) => setPasswordData({...passwordData, newPassword: e.target.value})} required className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-[#FF5645] focus:bg-white focus:outline-none" />
                   </div>
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-700">Xác nhận mật khẩu mới</label>
                   <div className="relative">
                     <Lock className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-                    <input type="password" value={passwordData.confirmPassword} onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})} required className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none" />
+                    <input type="password" value={passwordData.confirmPassword} onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})} required className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-[#FF5645] focus:bg-white focus:outline-none" />
                   </div>
                 </div>
 
-                <button type="submit" disabled={isLoading} className="mt-4 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60">
+                <button type="submit" disabled={isLoading} className="tp-btn-primary mt-4 px-6 py-2.5 text-sm disabled:opacity-60">
                   {isLoading ? 'Đang xử lý...' : 'Đổi mật khẩu'}
                 </button>
               </form>

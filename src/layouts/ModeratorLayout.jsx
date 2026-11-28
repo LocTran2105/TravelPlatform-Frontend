@@ -4,6 +4,7 @@ import { History, Home, LayoutDashboard, ListChecks, LogOut, ShieldCheck, Shield
 import axiosClient from '../api/axiosClient';
 import useAsyncData from '../utils/useAsyncData';
 import { readStoredUser, roleLabel } from '../utils/moderation';
+import SiteThemeToggle from '../components/site/SiteThemeToggle';
 
 const STATS_REFRESH_MS = 60 * 1000;
 
@@ -45,6 +46,7 @@ export default function ModeratorLayout() {
               <p className="text-sm font-extrabold leading-tight text-slate-900">Kiểm duyệt</p>
               <p className="text-[11px] font-medium text-slate-500">Quản lý nội dung cộng đồng</p>
             </div>
+            <SiteThemeToggle className="tp-icon-button ml-auto !h-8 !w-8" />
           </div>
         </div>
 

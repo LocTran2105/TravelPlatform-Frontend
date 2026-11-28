@@ -16,6 +16,7 @@ import { GoogleLogin } from '@react-oauth/google';
 import { getHomePathForRole, normalizeRole } from '../utils/auth';
 import { getSafeRedirect, withRedirect } from '../utils/redirect';
 import { API_BASE_URL } from '../config/api';
+import SiteThemeToggle from './site/SiteThemeToggle';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -212,7 +213,8 @@ const Login = () => {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-slate-950 font-sans text-slate-800 antialiased">
+    <div className="tp-site relative min-h-screen w-full overflow-hidden !bg-[#070b0a] text-slate-800 antialiased">
+      <SiteThemeToggle className="tp-icon-button absolute right-5 top-5 z-20" />
       {/* ================= NỀN: ẢNH DU LỊCH LÀM MỜ ================= */}
       <div
         className="absolute inset-0 scale-110 bg-cover bg-center blur-md"
@@ -225,7 +227,7 @@ const Login = () => {
 
       {/* Logo góc trên bên trái — bấm để quay lại trang chủ */}
       <Link to="/" className="relative z-10 inline-flex items-center gap-2 p-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 text-white shadow-lg shadow-emerald-500/25">
+        <div className="tp-logo-mark">
           <Compass className="h-5 w-5" />
         </div>
         <span className="text-lg font-bold text-white">TravelPlatform</span>
@@ -329,7 +331,7 @@ const Login = () => {
                   }}
                   placeholder="traveler@example.com"
                   autoComplete="email"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-[#FF5645] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF5645]/25"
                 />
               </div>
             </div>
@@ -345,7 +347,7 @@ const Login = () => {
                     setForgotEmail(email);
                     setShowForgotModal(true);
                   }}
-                  className="text-xs font-medium text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
+                  className="text-xs font-medium text-[#E04B3B] transition-colors hover:text-[#c43d2f] hover:underline"
                 >
                   Quên mật khẩu?
                 </button>
@@ -364,7 +366,7 @@ const Login = () => {
                   }}
                   placeholder="••••••••"
                   autoComplete="current-password"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-11 text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-11 text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-[#FF5645] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF5645]/25"
                 />
                 <button
                   type="button"
@@ -383,7 +385,7 @@ const Login = () => {
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-4 w-4 cursor-pointer rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-[#FF5645] text-[#FF5645] focus:ring-[#FF5645]"
                 />
                 <span className="text-xs font-medium text-slate-600">Ghi nhớ tài khoản này</span>
               </label>
@@ -391,7 +393,7 @@ const Login = () => {
               <button
                 type="button"
                 onClick={handleQuickFillDemo}
-                className="flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-emerald-600"
+                className="flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-[#E04B3B]"
                 title="Tự động điền tài khoản mẫu để trải nghiệm nhanh"
               >
                 <span>⚡ Điền mẫu demo</span>
@@ -401,7 +403,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="group mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-600/20 transition-all duration-200 hover:from-emerald-700 hover:to-teal-700 hover:shadow-lg hover:shadow-emerald-600/30 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+              className="tp-btn-primary group mt-2 w-full px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isLoading ? (
                 <>
@@ -426,7 +428,7 @@ const Login = () => {
               Bạn chưa có tài khoản?{' '}
               <Link
                 to={withRedirect('/register', redirect)}
-                className="font-semibold text-emerald-600 transition-colors hover:text-emerald-700 hover:underline"
+                className="font-semibold text-[#E04B3B] transition-colors hover:text-[#c43d2f] hover:underline"
               >
                 Đăng ký ngay miễn phí
               </Link>
@@ -450,7 +452,7 @@ const Login = () => {
             </button>
 
             <div className="mb-6 text-center">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-[#E04B3B]">
                 <Lock className="h-6 w-6" />
               </div>
               <h3 className="text-lg font-bold text-slate-900">Khôi phục mật khẩu</h3>
@@ -476,7 +478,7 @@ const Login = () => {
                     setShowForgotModal(false);
                     setForgotStatus({ loading: false, sent: false, error: '' });
                   }}
-                  className="mt-5 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+                  className="tp-btn-primary mt-5 w-full px-4 py-2.5 text-sm"
                 >
                   Đã hiểu & Quay lại
                 </button>
@@ -500,7 +502,7 @@ const Login = () => {
                       value={forgotEmail}
                       onChange={(e) => setForgotEmail(e.target.value)}
                       placeholder="traveler@example.com"
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-800 transition-all focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-800 transition-all focus:border-[#FF5645] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF5645]/25"
                     />
                   </div>
                 </div>
@@ -516,7 +518,7 @@ const Login = () => {
                   <button
                     type="submit"
                     disabled={forgotStatus.loading}
-                    className="flex w-1/2 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
+                    className="tp-btn-primary w-1/2 px-4 py-2.5 text-sm disabled:opacity-60"
                   >
                     {forgotStatus.loading ? <span>Đang gửi...</span> : <span>Gửi yêu cầu</span>}
                   </button>

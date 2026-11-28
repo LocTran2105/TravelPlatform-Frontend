@@ -143,7 +143,7 @@ export default function HomePlaceMap() {
   return (
     <section id="home-map" className="mx-auto max-w-7xl scroll-mt-24 px-4 pb-16 pt-6 sm:px-6 lg:px-8">
       <div className="mb-5 flex flex-col gap-1">
-        <h2 className="text-2xl font-extrabold text-slate-900">Tra cứu địa điểm</h2>
+        <h2 className="text-2xl font-bold text-slate-900">Tra cứu địa điểm</h2>
         <p className="text-sm text-slate-500">Tìm một địa điểm, quán ăn hay khách sạn để xem vị trí trên bản đồ.</p>
       </div>
 
@@ -166,7 +166,7 @@ export default function HomePlaceMap() {
           <button
             type="submit"
             disabled={status === 'loading'}
-            className="flex items-center justify-center gap-2 rounded-full bg-[#FF5645] px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-[#E04B3B] disabled:opacity-70"
+            className="tp-btn-primary px-6 py-3 text-sm disabled:opacity-70"
           >
             {status === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             Tìm kiếm

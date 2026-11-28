@@ -28,6 +28,7 @@ import { presetForDay } from '../utils/directions';
 import { DAY_COLORS, formatFullDate, formatVND, EXPENSE_CATEGORIES, CATEGORY_MAP } from '../utils/tripDetail';
 import { API_BASE_URL } from '../config/api';
 import { toast } from '../utils/toast';
+import SiteThemeToggle from './site/SiteThemeToggle';
 
 // Thẻ địa điểm AI (AiAssistantChat) gửi payload JSON với MIME này khi kéo.
 const PLACE_MIME_TYPE = 'application/x-travel-place';
@@ -1448,9 +1449,12 @@ const TripDetail = () => {
       <aside className={`${isSidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out relative z-20 overflow-hidden`}>
         <div className="flex h-full w-64 flex-col">
           <div className="border-b border-slate-100 px-4 pb-4 pt-4">
-            <Link to="/home" className="mb-3 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition-colors hover:text-slate-900">
-              <ArrowLeft className="h-3.5 w-3.5" /> Trang chủ
-            </Link>
+            <div className="mb-3 flex items-center justify-between">
+              <Link to="/home" className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 transition-colors hover:text-slate-900">
+                <ArrowLeft className="h-3.5 w-3.5" /> Trang chủ
+              </Link>
+              <SiteThemeToggle className="tp-icon-button !h-8 !w-8" />
+            </div>
             <h2 className="line-clamp-2 text-base font-extrabold leading-snug text-slate-900">{trip.title}</h2>
             <p className="mt-1 flex items-center gap-1 text-xs font-medium text-slate-500">
               <MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{trip.destination}</span>

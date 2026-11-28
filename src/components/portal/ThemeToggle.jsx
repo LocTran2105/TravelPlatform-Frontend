@@ -2,12 +2,12 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Moon, Sun } from 'lucide-react';
 
 /** Nút đổi giao diện sáng/tối: biểu tượng xoay và đổi chỗ khi bấm. */
-export default function ThemeToggle({ theme, onToggle }) {
+export default function ThemeToggle({ theme, onToggle, className = 'portal-icon-button' }) {
   const dark = theme === 'dark';
   return (
     <button
       type="button"
-      className="portal-icon-button"
+      className={className}
       onClick={onToggle}
       aria-label={dark ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}
       title={dark ? 'Giao diện sáng' : 'Giao diện tối'}

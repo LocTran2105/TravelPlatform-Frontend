@@ -1,10 +1,60 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'motion/react';
 import axios from 'axios';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import { Calendar, Users, ChevronDown, X, Compass, MapPin, AlertCircle  } from 'lucide-react';
+import { Calendar, Users, ChevronDown, X, MapPin, AlertCircle, Wallet, Loader2, ArrowRight } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
+import SiteHeader from './site/SiteHeader';
+import JourneyScene from './site/JourneyScene';
+
+const VISIBILITY_LABELS = {
+  PRIVATE: 'Riêng tư: chỉ bạn và người đi cùng',
+  FOLLOWERS: 'Người theo dõi bạn',
+  FRIENDS: 'Bạn bè: hai người theo dõi nhau',
+  PUBLIC: 'Công khai trong cộng đồng',
+};
+const fmtDate = (d) => (d ? d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null);
+const fmtMoney = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? `${n.toLocaleString('vi-VN')} ₫` : null;
+};
+const tripDays = (a, b) => (a && b ? Math.round((b - a) / 86400000) + 1 : null);
+
+/** Bản xem trước chuyến đi, cập nhật theo từng ô người dùng điền. */
+function TripPreview({ destination, startDate, endDate, budget, mates, visibility }) {
+  const days = tripDays(startDate, endDate);
+  const when = startDate
+    ? `${fmtDate(startDate)}${endDate ? ` – ${fmtDate(endDate)}` : ''}${days ? `, ${days} ngày` : ''}`
+    : 'Chưa chọn ngày';
+  const rows = [
+    { icon: Calendar, label: 'Thời gian', value: when },
+    { icon: Wallet, label: 'Ngân sách', value: fmtMoney(budget) || 'Chưa đặt' },
+    { icon: Users, label: 'Đi cùng', value: mates ? `Bạn và ${mates} người được mời` : 'Chỉ mình bạn' },
+  ];
+  return (
+    <JourneyScene className="h-full min-h-[560px] rounded-[1.75rem] border border-slate-200/70" labels={false}>
+      <div className="absolute inset-x-5 bottom-5 z-[5] rounded-2xl border border-white/80 bg-white/90 p-5 shadow-[0_24px_50px_-28px_rgba(28,36,33,.6)] backdrop-blur-md">
+        <p className="text-sm font-medium text-slate-500">Xem trước chuyến đi</p>
+        <motion.p key={destination.trim() || 'empty'} className="mt-1 truncate text-2xl font-bold text-slate-900"
+          initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+          {destination.trim() || 'Điểm đến của bạn'}
+        </motion.p>
+        <dl className="mt-4 space-y-2.5">
+          {rows.map(({ icon: Icon, label, value }) => (
+            <div key={label} className="flex items-center gap-3 text-sm">
+              <dt className="flex w-28 flex-shrink-0 items-center gap-2 text-slate-500"><Icon className="h-4 w-4" />{label}</dt>
+              <dd className="min-w-0 truncate font-semibold text-slate-800">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">Ai xem được: {VISIBILITY_LABELS[visibility]}</p>
+      </div>
+    </JourneyScene>
+  );
+}
+
 
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -208,19 +258,18 @@ const PlanTrip = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-white font-sans text-gray-900 flex flex-col">
-      <header className="p-5 border-b border-gray-100">
-        <Link to="/home" className="inline-flex items-center gap-2 text-gray-900 font-bold text-lg hover:opacity-80 transition-opacity">
-          <Compass className="h-7 w-7 text-[#FF5645]" /> TravelPlatform
-        </Link>
-      </header>
+    <div className="tp-site flex min-h-screen w-full flex-col">
+      <SiteHeader search={false} />
 
-      <main className="flex-1 flex flex-col items-center justify-center px-4 pb-20 pt-10">
-        <h1 className="text-4xl sm:text-5xl font-extrabold mb-10 text-center tracking-tight text-slate-800">
-          Plan a new trip
-        </h1>
+      <main className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-[minmax(0,1fr)] gap-10 px-4 pb-16 pt-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] lg:px-8 lg:pt-14">
+        <div>
+        <motion.h1 className="text-4xl font-bold text-slate-900 sm:text-5xl"
+          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+          Lên kế hoạch chuyến mới
+        </motion.h1>
+        <p className="mt-3 mb-8 text-base text-slate-600">Chỉ cần điểm đến là đủ để bắt đầu. Ngày đi, ngân sách và bạn đồng hành có thể thêm sau.</p>
 
-        <form onSubmit={handleStartPlanning} className="w-full max-w-[650px] space-y-5">
+        <form onSubmit={handleStartPlanning} className="w-full space-y-4">
           {errorMsg && (
             <div className="p-3.5 text-sm text-red-600 bg-red-50 rounded-xl border border-red-200 shadow-sm">
               {errorMsg}
@@ -229,8 +278,8 @@ const PlanTrip = () => {
 
           {/* 1. NƠI ĐẾN (Tích hợp Autocomplete Nominatim API) */}
           <div ref={dropdownRef} className="relative z-50">
-            <div className="border border-gray-300 rounded-2xl p-4 sm:p-5 flex items-center bg-white focus-within:border-gray-500 focus-within:ring-2 focus-within:ring-gray-200 transition-all shadow-sm relative">
-              <span className="font-bold text-gray-900 mr-3 whitespace-nowrap text-lg">Where to?</span>
+            <div className="border border-slate-200 rounded-2xl bg-white p-4 sm:p-5 flex items-center bg-white focus-within:border-[#FF5645] focus-within:ring-4 focus-within:ring-[#FF5645]/10 transition-all shadow-sm relative">
+              <span className="font-bold text-gray-900 mr-3 whitespace-nowrap text-lg">Đi đâu?</span>
               <input
                 type="text"
                 value={destination}
@@ -239,7 +288,8 @@ const PlanTrip = () => {
                   setShowDropdown(true);
                 }}
                 onFocus={() => destination.trim().length >= 2 && setShowDropdown(true)}
-                placeholder="e.g. Da Lat, Ha Noi, Sapa..."
+                placeholder="Ví dụ: Đà Lạt, Hà Nội, Sa Pa"
+                aria-label="Điểm đến"
                 className="outline-none flex-1 text-gray-700 font-medium placeholder-gray-400 bg-transparent w-full text-lg"
                 autoComplete="off"
               />
@@ -276,10 +326,10 @@ const PlanTrip = () => {
           </div>
 
           {/* 2. CHỌN NGÀY */}
-          <div className="border border-gray-300 rounded-2xl p-4 relative focus-within:border-gray-500 focus-within:ring-2 focus-within:ring-gray-200 transition-all shadow-sm">
-            <label className="text-[11px] font-bold text-gray-900 uppercase tracking-wider absolute top-2.5 left-5">
-              Dates (optional)
-            </label>
+          <div className="border border-slate-200 rounded-2xl bg-white p-4 relative focus-within:border-[#FF5645] focus-within:ring-4 focus-within:ring-[#FF5645]/10 transition-all shadow-sm">
+            <span className="absolute top-2.5 left-5 text-sm font-bold text-gray-900">
+              Ngày đi <span className="font-normal text-slate-400">(không bắt buộc)</span>
+            </span>
             <div className="flex items-center mt-5 px-1">
               <div className="flex items-center flex-1">
                 <Calendar className="w-5 h-5 text-gray-400 mr-2.5" />
@@ -290,9 +340,9 @@ const PlanTrip = () => {
                   startDate={startDate}
                   endDate={endDate}
                   monthsShown={1}
-                  placeholderText="Start date"
+                  placeholderText="Ngày bắt đầu"
                   className="outline-none text-gray-700 w-full text-base font-semibold bg-transparent cursor-pointer"
-                  dateFormat="dd MMM yyyy"
+                  dateFormat="dd/MM/yyyy"
                 />
               </div>
               <div className="h-6 w-px bg-gray-200 mx-3"></div>
@@ -306,33 +356,34 @@ const PlanTrip = () => {
                   endDate={endDate}
                   minDate={startDate}
                   monthsShown={1}
-                  placeholderText="End date"
+                  placeholderText="Ngày kết thúc"
                   className="outline-none text-gray-700 w-full text-base font-semibold bg-transparent cursor-pointer"
-                  dateFormat="dd MMM yyyy"
+                  dateFormat="dd/MM/yyyy"
                 />
               </div>
             </div>
           </div>
 
           {/* 2b. NGÂN SÁCH (không bắt buộc, có thể đặt sau trong tab Budget) */}
-          <div className="border border-gray-300 rounded-2xl p-5 flex items-center focus-within:border-gray-500 focus-within:ring-2 focus-within:ring-gray-200 transition-all shadow-sm">
-            <span className="text-gray-900 font-bold mr-4 whitespace-nowrap text-base">Budget</span>
+          <div className="border border-slate-200 rounded-2xl bg-white p-5 flex items-center focus-within:border-[#FF5645] focus-within:ring-4 focus-within:ring-[#FF5645]/10 transition-all shadow-sm">
+            <span className="text-gray-900 font-bold mr-4 whitespace-nowrap text-base">Ngân sách</span>
             <input
               type="number"
               min="0"
               step="100000"
               value={totalBudget}
               onChange={(e) => setTotalBudget(e.target.value)}
-              placeholder="Total budget (optional)"
-              className="outline-none flex-1 text-gray-700 font-medium placeholder-gray-400 bg-transparent min-w-[200px]"
+              placeholder="Tổng ngân sách (không bắt buộc)"
+              aria-label="Tổng ngân sách"
+              className="outline-none flex-1 text-gray-700 font-medium placeholder-gray-400 bg-transparent min-w-0"
             />
             <span className="text-gray-400 font-semibold ml-2">₫</span>
           </div>
 
           {/* 3. BẠN ĐỒNG HÀNH */}
-          <div className="border border-gray-300 rounded-2xl p-5 flex flex-col focus-within:border-gray-500 focus-within:ring-2 focus-within:ring-gray-200 transition-all shadow-sm">
+          <div className="border border-slate-200 rounded-2xl bg-white p-5 flex flex-col focus-within:border-[#FF5645] focus-within:ring-4 focus-within:ring-[#FF5645]/10 transition-all shadow-sm">
             <div className="flex items-center">
-              <span className="text-gray-900 font-bold mr-4 whitespace-nowrap text-base">Tripmates</span>
+              <span className="text-gray-900 font-bold mr-4 whitespace-nowrap text-base">Bạn đồng hành</span>
               <input
                 type="email"
                 value={companionInput}
@@ -341,8 +392,9 @@ const PlanTrip = () => {
                   if (companionError) setCompanionError('');
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddCompanion(e)}
-                placeholder="Enter email to invite..."
-                className="outline-none flex-1 text-gray-700 font-medium placeholder-gray-400 bg-transparent min-w-[200px]"
+                placeholder="Nhập email rồi nhấn Enter"
+                aria-label="Email bạn đồng hành"
+                className="outline-none flex-1 text-gray-700 font-medium placeholder-gray-400 bg-transparent min-w-0"
               />
             </div>
 
@@ -387,11 +439,9 @@ const PlanTrip = () => {
                 value={visibility}
                 onChange={(e) => setVisibility(e.target.value)}
                 className="appearance-none bg-transparent font-bold outline-none cursor-pointer pr-7 text-sm w-full"
+                aria-label="Ai xem được chuyến đi"
               >
-                <option value="PRIVATE">🔒 Private (Only you & mates)</option>
-                <option value="FOLLOWERS">👥 Followers (People who follow you)</option>
-                <option value="FRIENDS">🤝 Friends (You follow each other)</option>
-                <option value="PUBLIC">🌎 Public (Community)</option>
+                {Object.entries(VISIBILITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
               <ChevronDown className="w-4 h-4 absolute right-3 text-gray-400 pointer-events-none" />
             </div>
@@ -399,12 +449,18 @@ const PlanTrip = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="bg-[#FF5645] hover:bg-[#E04B3B] text-white font-bold py-3.5 px-10 rounded-full shadow-lg transition-all active:scale-95 disabled:opacity-70 w-full sm:w-auto text-lg"
+              className="tp-btn-primary w-full px-9 py-3.5 text-base disabled:opacity-70 sm:w-auto"
             >
-              {isLoading ? 'Creating...' : 'Start planning'}
+              {isLoading ? <><Loader2 className="h-5 w-5 animate-spin" /> Đang tạo...</> : <>Bắt đầu lên kế hoạch <ArrowRight className="h-5 w-5" /></>}
             </button>
           </div>
         </form>
+        </div>
+
+        <div className="hidden lg:block">
+          <TripPreview destination={destination} startDate={startDate} endDate={endDate} budget={totalBudget}
+            mates={companionEmails.length} visibility={visibility} />
+        </div>
       </main>
     </div>
   );

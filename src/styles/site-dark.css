@@ -1,0 +1,290 @@
+/* TỰ SINH bởi gen-site-dark.cjs — giao diện tối cho trang du khách.
+   Cách làm: đổi biến màu của Tailwind (thang xám đảo chiều, nền màu nhạt thành sắc tối dịu),
+   nên mọi trang dùng class Tailwind (kể cả Cộng đồng, chi tiết chuyến đi) tự đổi màu theo.
+   Chỉ có hiệu lực khi <html data-site-theme="dark"> (SiteThemeRoot gắn ở trang du khách, không gắn ở portal). */
+
+:root[data-site-theme="dark"] {
+  color-scheme: dark;
+  --tp-surface: #17201d;
+  --tp-raised: #1e2925;
+  --tp-dark-button: #2c3834;
+  --tp-dark-button-hover: #364440;
+  --color-red-50: color-mix(in oklab, oklch(25.8% 0.092 26.042) 45%, #17201d);
+  --color-red-100: color-mix(in oklab, oklch(39.6% 0.141 25.723) 55%, #17201d);
+  --color-red-200: color-mix(in oklab, oklch(44.4% 0.177 26.899) 65%, #17201d);
+  --color-red-300: oklch(50.5% 0.213 27.518);
+  --color-red-700: oklch(80.8% 0.114 19.571);
+  --color-red-800: oklch(88.5% 0.062 18.334);
+  --color-red-900: oklch(93.6% 0.032 17.717);
+  --color-red-950: oklch(97.1% 0.013 17.38);
+  --color-orange-50: color-mix(in oklab, oklch(26.6% 0.079 36.259) 45%, #17201d);
+  --color-orange-100: color-mix(in oklab, oklch(40.8% 0.123 38.172) 55%, #17201d);
+  --color-orange-200: color-mix(in oklab, oklch(47% 0.157 37.304) 65%, #17201d);
+  --color-orange-300: oklch(55.3% 0.195 38.402);
+  --color-orange-700: oklch(83.7% 0.128 66.29);
+  --color-orange-800: oklch(90.1% 0.076 70.697);
+  --color-orange-900: oklch(95.4% 0.038 75.164);
+  --color-orange-950: oklch(98% 0.016 73.684);
+  --color-amber-50: color-mix(in oklab, oklch(27.9% 0.077 45.635) 45%, #17201d);
+  --color-amber-100: color-mix(in oklab, oklch(41.4% 0.112 45.904) 55%, #17201d);
+  --color-amber-200: color-mix(in oklab, oklch(47.3% 0.137 46.201) 65%, #17201d);
+  --color-amber-300: oklch(55.5% 0.163 48.998);
+  --color-amber-700: oklch(87.9% 0.169 91.605);
+  --color-amber-800: oklch(92.4% 0.12 95.746);
+  --color-amber-900: oklch(96.2% 0.059 95.617);
+  --color-amber-950: oklch(98.7% 0.022 95.277);
+  --color-yellow-50: color-mix(in oklab, oklch(28.6% 0.066 53.813) 45%, #17201d);
+  --color-yellow-100: color-mix(in oklab, oklch(42.1% 0.095 57.708) 55%, #17201d);
+  --color-yellow-200: color-mix(in oklab, oklch(47.6% 0.114 61.907) 65%, #17201d);
+  --color-yellow-300: oklch(55.4% 0.135 66.442);
+  --color-yellow-700: oklch(90.5% 0.182 98.111);
+  --color-yellow-800: oklch(94.5% 0.129 101.54);
+  --color-yellow-900: oklch(97.3% 0.071 103.193);
+  --color-yellow-950: oklch(98.7% 0.026 102.212);
+  --color-lime-50: color-mix(in oklab, oklch(27.4% 0.072 132.109) 45%, #17201d);
+  --color-lime-100: color-mix(in oklab, oklch(40.5% 0.101 131.063) 55%, #17201d);
+  --color-lime-200: color-mix(in oklab, oklch(45.3% 0.124 130.933) 65%, #17201d);
+  --color-lime-300: oklch(53.2% 0.157 131.589);
+  --color-lime-700: oklch(89.7% 0.196 126.665);
+  --color-lime-800: oklch(93.8% 0.127 124.321);
+  --color-lime-900: oklch(96.7% 0.067 122.328);
+  --color-lime-950: oklch(98.6% 0.031 120.757);
+  --color-green-50: color-mix(in oklab, oklch(26.6% 0.065 152.934) 45%, #17201d);
+  --color-green-100: color-mix(in oklab, oklch(39.3% 0.095 152.535) 55%, #17201d);
+  --color-green-200: color-mix(in oklab, oklch(44.8% 0.119 151.328) 65%, #17201d);
+  --color-green-300: oklch(52.7% 0.154 150.069);
+  --color-green-700: oklch(87.1% 0.15 154.449);
+  --color-green-800: oklch(92.5% 0.084 155.995);
+  --color-green-900: oklch(96.2% 0.044 156.743);
+  --color-green-950: oklch(98.2% 0.018 155.826);
+  --color-emerald-50: color-mix(in oklab, oklch(26.2% 0.051 172.552) 45%, #17201d);
+  --color-emerald-100: color-mix(in oklab, oklch(37.8% 0.077 168.94) 55%, #17201d);
+  --color-emerald-200: color-mix(in oklab, oklch(43.2% 0.095 166.913) 65%, #17201d);
+  --color-emerald-300: oklch(50.8% 0.118 165.612);
+  --color-emerald-700: oklch(84.5% 0.143 164.978);
+  --color-emerald-800: oklch(90.5% 0.093 164.15);
+  --color-emerald-900: oklch(95% 0.052 163.051);
+  --color-emerald-950: oklch(97.9% 0.021 166.113);
+  --color-teal-50: color-mix(in oklab, oklch(27.7% 0.046 192.524) 45%, #17201d);
+  --color-teal-100: color-mix(in oklab, oklch(38.6% 0.063 188.416) 55%, #17201d);
+  --color-teal-200: color-mix(in oklab, oklch(43.7% 0.078 188.216) 65%, #17201d);
+  --color-teal-300: oklch(51.1% 0.096 186.391);
+  --color-teal-700: oklch(85.5% 0.138 181.071);
+  --color-teal-800: oklch(91% 0.096 180.426);
+  --color-teal-900: oklch(95.3% 0.051 180.801);
+  --color-teal-950: oklch(98.4% 0.014 180.72);
+  --color-cyan-50: color-mix(in oklab, oklch(30.2% 0.056 229.695) 45%, #17201d);
+  --color-cyan-100: color-mix(in oklab, oklch(39.8% 0.07 227.392) 55%, #17201d);
+  --color-cyan-200: color-mix(in oklab, oklch(45% 0.085 224.283) 65%, #17201d);
+  --color-cyan-300: oklch(52% 0.105 223.128);
+  --color-cyan-700: oklch(86.5% 0.127 207.078);
+  --color-cyan-800: oklch(91.7% 0.08 205.041);
+  --color-cyan-900: oklch(95.6% 0.045 203.388);
+  --color-cyan-950: oklch(98.4% 0.019 200.873);
+  --color-sky-50: color-mix(in oklab, oklch(29.3% 0.066 243.157) 45%, #17201d);
+  --color-sky-100: color-mix(in oklab, oklch(39.1% 0.09 240.876) 55%, #17201d);
+  --color-sky-200: color-mix(in oklab, oklch(44.3% 0.11 240.79) 65%, #17201d);
+  --color-sky-300: oklch(50% 0.134 242.749);
+  --color-sky-700: oklch(82.8% 0.111 230.318);
+  --color-sky-800: oklch(90.1% 0.058 230.902);
+  --color-sky-900: oklch(95.1% 0.026 236.824);
+  --color-sky-950: oklch(97.7% 0.013 236.62);
+  --color-blue-50: color-mix(in oklab, oklch(28.2% 0.091 267.935) 45%, #17201d);
+  --color-blue-100: color-mix(in oklab, oklch(37.9% 0.146 265.522) 55%, #17201d);
+  --color-blue-200: color-mix(in oklab, oklch(42.4% 0.199 265.638) 65%, #17201d);
+  --color-blue-300: oklch(48.8% 0.243 264.376);
+  --color-blue-700: oklch(80.9% 0.105 251.813);
+  --color-blue-800: oklch(88.2% 0.059 254.128);
+  --color-blue-900: oklch(93.2% 0.032 255.585);
+  --color-blue-950: oklch(97% 0.014 254.604);
+  --color-indigo-50: color-mix(in oklab, oklch(25.7% 0.09 281.288) 45%, #17201d);
+  --color-indigo-100: color-mix(in oklab, oklch(35.9% 0.144 278.697) 55%, #17201d);
+  --color-indigo-200: color-mix(in oklab, oklch(39.8% 0.195 277.366) 65%, #17201d);
+  --color-indigo-300: oklch(45.7% 0.24 277.023);
+  --color-indigo-700: oklch(78.5% 0.115 274.713);
+  --color-indigo-800: oklch(87% 0.065 274.039);
+  --color-indigo-900: oklch(93% 0.034 272.788);
+  --color-indigo-950: oklch(96.2% 0.018 272.314);
+  --color-violet-50: color-mix(in oklab, oklch(28.3% 0.141 291.089) 45%, #17201d);
+  --color-violet-100: color-mix(in oklab, oklch(38% 0.189 293.745) 55%, #17201d);
+  --color-violet-200: color-mix(in oklab, oklch(43.2% 0.232 292.759) 65%, #17201d);
+  --color-violet-300: oklch(49.1% 0.27 292.581);
+  --color-violet-700: oklch(81.1% 0.111 293.571);
+  --color-violet-800: oklch(89.4% 0.057 293.283);
+  --color-violet-900: oklch(94.3% 0.029 294.588);
+  --color-violet-950: oklch(96.9% 0.016 293.756);
+  --color-purple-50: color-mix(in oklab, oklch(29.1% 0.149 302.717) 45%, #17201d);
+  --color-purple-100: color-mix(in oklab, oklch(38.1% 0.176 304.987) 55%, #17201d);
+  --color-purple-200: color-mix(in oklab, oklch(43.8% 0.218 303.724) 65%, #17201d);
+  --color-purple-300: oklch(49.6% 0.265 301.924);
+  --color-purple-700: oklch(82.7% 0.119 306.383);
+  --color-purple-800: oklch(90.2% 0.063 306.703);
+  --color-purple-900: oklch(94.6% 0.033 307.174);
+  --color-purple-950: oklch(97.7% 0.014 308.299);
+  --color-fuchsia-50: color-mix(in oklab, oklch(29.3% 0.136 325.661) 45%, #17201d);
+  --color-fuchsia-100: color-mix(in oklab, oklch(40.1% 0.17 325.612) 55%, #17201d);
+  --color-fuchsia-200: color-mix(in oklab, oklch(45.2% 0.211 324.591) 65%, #17201d);
+  --color-fuchsia-300: oklch(51.8% 0.253 323.949);
+  --color-fuchsia-700: oklch(83.3% 0.145 321.434);
+  --color-fuchsia-800: oklch(90.3% 0.076 319.62);
+  --color-fuchsia-900: oklch(95.2% 0.037 318.852);
+  --color-fuchsia-950: oklch(97.7% 0.017 320.058);
+  --color-pink-50: color-mix(in oklab, oklch(28.4% 0.109 3.907) 45%, #17201d);
+  --color-pink-100: color-mix(in oklab, oklch(40.8% 0.153 2.432) 55%, #17201d);
+  --color-pink-200: color-mix(in oklab, oklch(45.9% 0.187 3.815) 65%, #17201d);
+  --color-pink-300: oklch(52.5% 0.223 3.958);
+  --color-pink-700: oklch(82.3% 0.12 346.018);
+  --color-pink-800: oklch(89.9% 0.061 343.231);
+  --color-pink-900: oklch(94.8% 0.028 342.258);
+  --color-pink-950: oklch(97.1% 0.014 343.198);
+  --color-rose-50: color-mix(in oklab, oklch(27.1% 0.105 12.094) 45%, #17201d);
+  --color-rose-100: color-mix(in oklab, oklch(41% 0.159 10.272) 55%, #17201d);
+  --color-rose-200: color-mix(in oklab, oklch(45.5% 0.188 13.697) 65%, #17201d);
+  --color-rose-300: oklch(51.4% 0.222 16.935);
+  --color-rose-700: oklch(81% 0.117 11.638);
+  --color-rose-800: oklch(89.2% 0.058 10.001);
+  --color-rose-900: oklch(94.1% 0.03 12.58);
+  --color-rose-950: oklch(96.9% 0.015 12.422);
+  --color-slate-50: #0f1614;
+  --color-slate-100: #1a2421;
+  --color-slate-200: #2a3531;
+  --color-slate-300: #3a4642;
+  --color-slate-400: #66756f;
+  --color-slate-500: #8b9a94;
+  --color-slate-600: #a9b6b1;
+  --color-slate-700: #c4cfca;
+  --color-slate-800: #dce4e0;
+  --color-slate-900: #e8eeea;
+  --color-slate-950: #f4f7f5;
+  --color-gray-50: #0f1614;
+  --color-gray-100: #1a2421;
+  --color-gray-200: #2a3531;
+  --color-gray-300: #3a4642;
+  --color-gray-400: #66756f;
+  --color-gray-500: #8b9a94;
+  --color-gray-600: #a9b6b1;
+  --color-gray-700: #c4cfca;
+  --color-gray-800: #dce4e0;
+  --color-gray-900: #e8eeea;
+  --color-gray-950: #f4f7f5;
+  --color-zinc-50: #0f1614;
+  --color-zinc-100: #1a2421;
+  --color-zinc-200: #2a3531;
+  --color-zinc-300: #3a4642;
+  --color-zinc-400: #66756f;
+  --color-zinc-500: #8b9a94;
+  --color-zinc-600: #a9b6b1;
+  --color-zinc-700: #c4cfca;
+  --color-zinc-800: #dce4e0;
+  --color-zinc-900: #e8eeea;
+  --color-zinc-950: #f4f7f5;
+  --color-neutral-50: #0f1614;
+  --color-neutral-100: #1a2421;
+  --color-neutral-200: #2a3531;
+  --color-neutral-300: #3a4642;
+  --color-neutral-400: #66756f;
+  --color-neutral-500: #8b9a94;
+  --color-neutral-600: #a9b6b1;
+  --color-neutral-700: #c4cfca;
+  --color-neutral-800: #dce4e0;
+  --color-neutral-900: #e8eeea;
+  --color-neutral-950: #f4f7f5;
+  --color-stone-50: #0f1614;
+  --color-stone-100: #1a2421;
+  --color-stone-200: #2a3531;
+  --color-stone-300: #3a4642;
+  --color-stone-400: #66756f;
+  --color-stone-500: #8b9a94;
+  --color-stone-600: #a9b6b1;
+  --color-stone-700: #c4cfca;
+  --color-stone-800: #dce4e0;
+  --color-stone-900: #e8eeea;
+  --color-stone-950: #f4f7f5;
+  --color-mauve-50: #0f1614;
+  --color-mauve-100: #1a2421;
+  --color-mauve-200: #2a3531;
+  --color-mauve-300: #3a4642;
+  --color-mauve-400: #66756f;
+  --color-mauve-500: #8b9a94;
+  --color-mauve-600: #a9b6b1;
+  --color-mauve-700: #c4cfca;
+  --color-mauve-800: #dce4e0;
+  --color-mauve-900: #e8eeea;
+  --color-mauve-950: #f4f7f5;
+  --color-olive-50: #0f1614;
+  --color-olive-100: #1a2421;
+  --color-olive-200: #2a3531;
+  --color-olive-300: #3a4642;
+  --color-olive-400: #66756f;
+  --color-olive-500: #8b9a94;
+  --color-olive-600: #a9b6b1;
+  --color-olive-700: #c4cfca;
+  --color-olive-800: #dce4e0;
+  --color-olive-900: #e8eeea;
+  --color-olive-950: #f4f7f5;
+  --color-mist-50: #0f1614;
+  --color-mist-100: #1a2421;
+  --color-mist-200: #2a3531;
+  --color-mist-300: #3a4642;
+  --color-mist-400: #66756f;
+  --color-mist-500: #8b9a94;
+  --color-mist-600: #a9b6b1;
+  --color-mist-700: #c4cfca;
+  --color-mist-800: #dce4e0;
+  --color-mist-900: #e8eeea;
+  --color-mist-950: #f4f7f5;
+  --color-taupe-50: #0f1614;
+  --color-taupe-100: #1a2421;
+  --color-taupe-200: #2a3531;
+  --color-taupe-300: #3a4642;
+  --color-taupe-400: #66756f;
+  --color-taupe-500: #8b9a94;
+  --color-taupe-600: #a9b6b1;
+  --color-taupe-700: #c4cfca;
+  --color-taupe-800: #dce4e0;
+  --color-taupe-900: #e8eeea;
+  --color-taupe-950: #f4f7f5;
+}
+
+:root[data-site-theme="dark"] body { background-color: #0f1614; }
+
+/* Nền trắng -> mặt nền tối (chữ trắng giữ nguyên để nút màu, chữ trên ảnh vẫn đúng) */
+:root[data-site-theme="dark"] :is(.bg-white, .hover\:bg-white:hover, .focus\:bg-white:focus, .focus-within\:bg-white:focus-within) { background-color: var(--tp-surface); }
+:root[data-site-theme="dark"] .bg-white\/95 { background-color: rgb(23 32 29 / .95); }
+:root[data-site-theme="dark"] .bg-white\/90 { background-color: rgb(23 32 29 / .9); }
+:root[data-site-theme="dark"] .bg-white\/85 { background-color: rgb(23 32 29 / .85); }
+:root[data-site-theme="dark"] .bg-white\/80 { background-color: rgb(23 32 29 / .8); }
+:root[data-site-theme="dark"] .bg-white\/70 { background-color: rgb(23 32 29 / .7); }
+:root[data-site-theme="dark"] .bg-white\/60 { background-color: rgb(23 32 29 / .6); }
+:root[data-site-theme="dark"] :is(.border-white, .border-white\/40) { border-color: var(--tp-surface); }
+:root[data-site-theme="dark"] .ring-white { --tw-ring-color: var(--tp-surface); }
+:root[data-site-theme="dark"] .from-white { --tw-gradient-from: var(--tp-surface); }
+:root[data-site-theme="dark"] .to-white { --tw-gradient-to: var(--tp-surface); }
+:root[data-site-theme="dark"] .fill-white { fill: var(--tp-surface); }
+
+/* Nút/khối nền xám đậm có chữ trắng: giữ tối (biến của chúng đã bị đảo sang sáng) */
+:root[data-site-theme="dark"] :is(.bg-slate-700, .bg-slate-800, .bg-slate-900, .bg-slate-950, .bg-gray-800, .bg-gray-900, .bg-gray-950) { background-color: var(--tp-dark-button); }
+:root[data-site-theme="dark"] :is(.hover\:bg-slate-700:hover, .hover\:bg-slate-800:hover, .hover\:bg-slate-900:hover, .hover\:bg-gray-800:hover) { background-color: var(--tp-dark-button-hover); }
+:root[data-site-theme="dark"] [class*="bg-slate-900/"], :root[data-site-theme="dark"] [class*="bg-slate-950/"], :root[data-site-theme="dark"] [class*="bg-slate-700/"] { background-color: rgb(4 8 7 / .62); }
+:root[data-site-theme="dark"] .bg-slate-950 { background-color: #070b0a; }
+
+/* Màu cố định (hex) hay gặp ở trang du khách */
+:root[data-site-theme="dark"] :is(.bg-\[\#F6F7F5\], .bg-\[\#F7F8F6\]) { background-color: #121a17; }
+:root[data-site-theme="dark"] .text-\[\#12211D\], :root[data-site-theme="dark"] .text-\[\#1F2A27\] { color: #e8eeea; }
+:root[data-site-theme="dark"] .text-\[\#5C6B66\] { color: #a9b6b1; }
+:root[data-site-theme="dark"] .border-\[\#E4E7E3\] { border-color: #2a3531; }
+
+/* Leaflet: khung thông tin trên bản đồ */
+:root[data-site-theme="dark"] :is(.leaflet-popup-content-wrapper, .leaflet-popup-tip) { background: var(--tp-surface); color: #e8eeea; box-shadow: 0 12px 30px rgba(0, 0, 0, .5); }
+:root[data-site-theme="dark"] .leaflet-bar a { background: var(--tp-surface); color: #e8eeea; border-color: #2a3531; }
+:root[data-site-theme="dark"] .leaflet-control-attribution { background: rgb(23 32 29 / .8) !important; color: #8b9a94; }
+:root[data-site-theme="dark"] .leaflet-control-attribution a { color: #a9b6b1; }
+
+/* Lịch chọn ngày (react-datepicker) */
+:root[data-site-theme="dark"] .react-datepicker { background: var(--tp-surface); color: #e8eeea; border-color: #2a3531; }
+:root[data-site-theme="dark"] .react-datepicker__header { background: #1e2925; border-color: #2a3531; }
+:root[data-site-theme="dark"] :is(.react-datepicker__current-month, .react-datepicker__day-name, .react-datepicker__day, .react-datepicker-time__header) { color: #e8eeea; }
+:root[data-site-theme="dark"] .react-datepicker__day:hover { background: #2c3834; }
+:root[data-site-theme="dark"] .react-datepicker__day--disabled { color: #4d5a55; }
+
+:root[data-site-theme="dark"] ::selection { background: rgb(255 86 69 / .35); }

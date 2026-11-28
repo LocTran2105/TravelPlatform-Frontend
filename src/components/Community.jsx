@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import { AnimatePresence, motion } from 'motion/react';
 import {
-  Compass, MapPin, Image as ImageIcon, Send,
+  Camera, MapPin, Send,
   Heart, MessageCircle, Share2, X, MoreHorizontal, Pencil, Trash2, Flag,
   ChevronLeft, ChevronRight, Play
 } from 'lucide-react';
 import FollowButton from './FollowButton';
-import UserMenu from './UserMenu';
+import SiteHeader from './site/SiteHeader';
+import SocialAmbient from './site/SocialAmbient';
 import CommentSection from './CommentSection';
 import ReportDialog from './ReportDialog';
 import { formatCount, formatCountFull } from './formatCount';
@@ -423,6 +425,47 @@ const EditPostModal = ({ post, onClose, onSaved }) => {
 // ---------------------------------------------------------------------------
 // Trang Cộng đồng
 // ---------------------------------------------------------------------------
+
+/** Tim nhỏ bung ra quanh nút khi vừa bấm thích (không chạy với bài đã thích sẵn lúc tải trang). */
+const HeartBurst = ({ liked }) => {
+  const prev = useRef(liked);
+  const [burst, setBurst] = useState(0);
+  useEffect(() => {
+    if (liked && !prev.current) setBurst((n) => n + 1);
+    prev.current = liked;
+  }, [liked]);
+  return (
+    <AnimatePresence>
+      {burst > 0 && (
+        <motion.span key={burst} className="tp-burst" initial={{ opacity: 1 }} animate={{ opacity: 0 }} transition={{ delay: 0.5, duration: 0.3 }}
+          onAnimationComplete={() => setBurst(0)}>
+          {Array.from({ length: 7 }, (_, i) => {
+            const a = (i / 7) * Math.PI * 2;
+            return (
+              <motion.span key={i} className="absolute -ml-1.5 -mt-1.5" initial={{ x: 0, y: 0, scale: 0.3 }}
+                animate={{ x: Math.cos(a) * 26, y: Math.sin(a) * 26, scale: [0.3, 1, 0.6] }} transition={{ duration: 0.55, ease: 'easeOut' }}>
+                <Heart className="h-3 w-3 fill-current" />
+              </motion.span>
+            );
+          })}
+        </motion.span>
+      )}
+    </AnimatePresence>
+  );
+};
+
+/** Chia sẻ bài viết: dùng bảng chia sẻ của thiết bị nếu có, không thì sao chép liên kết. */
+const sharePost = async (post) => {
+  const url = `${window.location.origin}/community`;
+  const text = post.caption ? `${post.authorName}: ${post.caption.slice(0, 120)}` : `Bài viết của ${post.authorName} trên TravelPlatform`;
+  try {
+    if (navigator.share) { await navigator.share({ title: 'TravelPlatform', text, url }); return; }
+    await navigator.clipboard.writeText(`${text}\n${url}`);
+    toast.success('Đã sao chép liên kết bài viết.');
+  } catch (error) {
+    if (error?.name !== 'AbortError') toast.error('Không chia sẻ được lúc này.');
+  }
+};
 
 const Community = () => {
   const [user, setUser] = useState(readStoredUser);
@@ -876,7 +919,7 @@ const Community = () => {
   // -------------------------------------------------------------------------
 
   return (
-    <div className="min-h-screen w-full bg-slate-50 font-sans text-slate-900 antialiased">
+    <div className="tp-site relative min-h-screen w-full !bg-slate-50 text-slate-900 antialiased">
       <style>{`
           @keyframes heart-pop {
             0% { transform: scale(0); opacity: 0; }
@@ -891,38 +934,26 @@ const Community = () => {
           }
         `}</style>
 
-      <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3.5 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-8">
-            <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FF5645] text-white shadow-sm">
-                <Compass className="h-5 w-5" />
-              </div>
-              <span className="text-lg font-extrabold tracking-tight">TravelPlatform</span>
-            </Link>
-            <nav className="hidden items-center gap-2 md:flex">
-              <Link to="/home" className="rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Home</Link>
-              <span className="rounded-lg bg-red-50 px-3.5 py-2 text-sm font-semibold text-[#FF5645]">Community</span>
-            </nav>
-          </div>
-          {user ? (
-            <UserMenu user={user} />
-          ) : (
-            <Link to="/login" className="text-sm font-bold text-[#FF5645]">Đăng nhập</Link>
-          )}
-        </div>
-      </header>
+      <SiteHeader user={user} />
+      <SocialAmbient />
 
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+      <main className="relative z-10 mx-auto max-w-3xl px-4 py-8 sm:px-6">
+        <motion.div className="mb-6" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
+          <h1 className="text-3xl font-bold text-slate-900">Cộng đồng</h1>
+          <p className="mt-1 text-sm text-slate-500">Khoảnh khắc, địa điểm hay và kinh nghiệm từ những người đi trước.</p>
+        </motion.div>
 
         {/* ================= FORM ĐĂNG BÀI ================= */}
         {user && (
-          <div className="mb-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <motion.div className="tp-composer mb-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08, duration: 0.5 }}>
             <form onSubmit={handleCreatePost}>
               <div className="flex gap-4">
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700">
-                  {user.fullName?.charAt(0).toUpperCase()}
-                </div>
+                <span className="tp-ring-avatar h-fit flex-shrink-0">
+                  <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-white text-sm font-bold text-slate-800">
+                    {user.avatar ? <img src={user.avatar} alt="" className="h-full w-full object-cover" /> : user.fullName?.charAt(0).toUpperCase()}
+                  </span>
+                </span>
                 <textarea
                   value={caption}
                   onChange={(e) => setCaption(e.target.value)}
@@ -957,7 +988,7 @@ const Community = () => {
                     onClick={() => fileInputRef.current?.click()}
                     className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-slate-500 transition-colors hover:bg-slate-100"
                   >
-                    <ImageIcon className="h-4 w-4 text-emerald-500" /> Ảnh/Video
+                    <Camera className="h-4 w-4 text-emerald-500" /> Ảnh/Video
                   </button>
                   <input
                     type="file"
@@ -1036,18 +1067,18 @@ const Community = () => {
                   <button
                     type="submit"
                     disabled={isPosting || (!caption.trim() && attachments.length === 0)}
-                    className="flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
+                    className="tp-btn-primary px-5 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isPosting ? 'Đang đăng...' : <><Send className="h-4 w-4" /> Đăng bài</>}
                   </button>
                 </div>
               </div>
             </form>
-          </div>
+          </motion.div>
         )}
 
         {/* ================= CHỌN KIỂU BẢNG TIN ================= */}
-        <div role="tablist" aria-label="Kiểu bảng tin" className="mb-5 flex gap-2">
+        <div role="tablist" aria-label="Kiểu bảng tin" className="tp-feed-tabs mb-5">
           {FEED_SORTS.map((tab) => (
             <button
               key={tab.value}
@@ -1055,12 +1086,11 @@ const Community = () => {
               role="tab"
               aria-selected={feedSort === tab.value}
               onClick={() => changeSort(tab.value)}
-              className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${
-                feedSort === tab.value
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100'
-              }`}
+              className="tp-feed-tab"
             >
+              {feedSort === tab.value && (
+                <motion.span layoutId="tp-feed-tab" className="tp-feed-tab-pill" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
+              )}
               {tab.icon} {tab.label}
             </button>
           ))}
@@ -1068,13 +1098,20 @@ const Community = () => {
 
         {/* ================= DÒNG THỜI GIAN ================= */}
         {loading ? (
-          <div className="flex justify-center py-10">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-[#FF5645]" />
+          <div className="space-y-6" aria-label="Đang tải bài viết" role="status">
+            {[0, 1].map((i) => (
+              <div key={i} className="rounded-3xl border border-slate-200 bg-white p-5">
+                <div className="flex items-center gap-3"><div className="tp-skeleton h-10 w-10 !rounded-full" /><div className="flex-1 space-y-2"><div className="tp-skeleton h-3.5 w-40" /><div className="tp-skeleton h-3 w-24" /></div></div>
+                <div className="tp-skeleton mt-4 h-4 w-3/4" />
+                <div className="tp-skeleton mt-4 h-64 w-full" />
+              </div>
+            ))}
           </div>
         ) : posts.length === 0 ? (
-          <div className="py-16 text-center">
-            <h3 className="text-lg font-bold text-slate-700">Chưa có bài viết nào</h3>
-            <p className="text-sm text-slate-500">Hãy là người đầu tiên chia sẻ hành trình của bạn.</p>
+          <div className="rounded-3xl border border-dashed border-slate-200 bg-white py-16 text-center">
+            <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-[#E04B3B]"><Camera className="h-7 w-7" /></span>
+            <h3 className="text-lg font-bold text-slate-800">Chưa có bài viết nào</h3>
+            <p className="mt-1 text-sm text-slate-500">Hãy là người đầu tiên chia sẻ hành trình của bạn.</p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -1083,7 +1120,9 @@ const Community = () => {
               const vis = getVisibility(post.visibility);
 
               return (
-                <div key={post.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <motion.article key={post.id} className="tp-post overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+                  initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: '0px 0px -8% 0px' }}
+                  transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }}>
 
                   {/* --- Header bài đăng --- */}
                   <div className="mb-3 flex items-start justify-between gap-3">
@@ -1175,8 +1214,9 @@ const Community = () => {
                       onClick={() => handleToggleLike(post.id, post.isLikedByMe)}
                       aria-pressed={Boolean(post.isLikedByMe)}
                       title={post.likeCount > 0 ? `${formatCountFull(post.likeCount)} lượt thích` : 'Thích'}
-                      className={`group flex items-center gap-2 transition-colors ${post.isLikedByMe ? 'text-rose-500' : 'text-slate-500 hover:text-rose-500'}`}
+                      className={`group relative flex items-center gap-2 transition-colors ${post.isLikedByMe ? 'text-rose-500' : 'text-slate-500 hover:text-rose-500'}`}
                     >
+                      <HeartBurst liked={Boolean(post.isLikedByMe)} />
                       <Heart
                         className={`h-6 w-6 transition-all duration-300 group-active:scale-75 ${post.isLikedByMe ? 'scale-110 fill-rose-500' : 'scale-100'}`}
                       />
@@ -1199,7 +1239,8 @@ const Community = () => {
                       </span>
                     </button>
 
-                    <button type="button" className="ml-auto flex items-center gap-2 text-slate-500 transition-colors hover:text-emerald-500">
+                    <button type="button" onClick={() => sharePost(post)} aria-label="Chia sẻ bài viết" title="Chia sẻ"
+                      className="ml-auto flex items-center gap-2 text-slate-500 transition-colors hover:text-emerald-500">
                       <Share2 className="h-6 w-6" />
                     </button>
                   </div>
@@ -1211,7 +1252,7 @@ const Community = () => {
                       onCountChange={(total) => handleCommentCountChange(post.id, total)}
                     />
                   )}
-                </div>
+                </motion.article>
               );
             })}
 
@@ -1230,7 +1271,7 @@ const Community = () => {
                 <button
                   type="button"
                   onClick={loadMore}
-                  className="rounded-full bg-slate-900 px-5 py-2 text-sm font-bold text-white hover:bg-slate-800"
+                  className="tp-btn-primary px-5 py-2 text-sm"
                 >
                   Thử lại
                 </button>
