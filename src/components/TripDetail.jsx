@@ -9,7 +9,7 @@ import {
   Share2, MoreHorizontal, Megaphone,
   LayoutDashboard, CalendarDays, Wallet, Camera,
   Star,
-  Trash2, Pencil
+  Trash2, Pencil, Wand2, Undo2, RotateCcw
 } from 'lucide-react';
 import AiAssistantChat from './AiAssistantChat';
 import ShareTripModal from './ShareTripModal';
@@ -19,12 +19,15 @@ import TripCoverImage from './TripCoverImage';
 import CoverImagePicker from './CoverImagePicker';
 import { usePlaceCovers, usePlaceActivity, getDestPlaceId } from './PlaceHoverPreview';
 import usePartnerHours from '../hooks/usePartnerHours';
+import useItineraryUndo, { orderSnapshot } from '../hooks/useItineraryUndo';
 import { postMatchesPlace } from '../utils/place';
 import { searchPlaces } from '../utils/placeSearch';
 import ItineraryDay from './ItineraryDay';
 import PlaceInfoPanel, { MediaPicker } from './PlaceInfoPanel';
 import ReportDialog from './ReportDialog';
 import TripMap from './TripMap';
+import TripStays from './TripStays';
+import OptimizeItineraryDialog from './OptimizeItineraryDialog';
 import ExpenseDialogs from './ExpenseDialogs';
 import { presetForDay } from '../utils/directions';
 import { DAY_COLORS, formatFullDate, formatVND, EXPENSE_CATEGORIES, CATEGORY_MAP } from '../utils/tripDetail';
@@ -231,6 +234,9 @@ const TripDetail = () => {
   const [searchNotice, setSearchNotice] = useState(null); // { dayId, name } | null
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
+  // Nơi ở (khách sạn/homestay) và hộp tối ưu lộ trình ({ dayIds } | null)
+  const [stays, setStays] = useState([]);
+  const [optimizeDialog, setOptimizeDialog] = useState(null);
   
   // ================= STATES CHO PANEL TRƯỢT =================
   const [coverImage, setCoverImage] = useState('');
@@ -409,6 +415,20 @@ const TripDetail = () => {
   };
 
   useEffect(() => { fetchTripDetails(); }, [tripId]);
+
+  // Nơi ở: tải lại khi đổi chuyến đi hoặc sau khi thêm/sửa/xóa (fetchStays tăng staysReload).
+  const [staysReload, setStaysReload] = useState(0);
+  const fetchStays = () => setStaysReload((n) => n + 1);
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return undefined;
+    let cancelled = false;
+    axios.get(`${API_BASE_URL}/api/trips/${tripId}/stays`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => { if (!cancelled) setStays(Array.isArray(res.data) ? res.data : []); })
+      // Bảng trip_stays chưa tạo (chưa chạy SQL mới) hoặc không có quyền: coi như chưa có nơi ở.
+      .catch(() => { if (!cancelled) setStays([]); });
+    return () => { cancelled = true; };
+  }, [tripId, staysReload]);
   useEffect(() => { fetchExpenses(); }, [tripId]);
 
   // Danh sách thành viên (chủ chuyến đi đứng đầu). Người chưa là thành viên không xem được trang này.
@@ -441,6 +461,8 @@ const TripDetail = () => {
     return null;
   }, [members, membersLoaded, myId, trip]);
   const canEdit = myRole === 'OWNER' || myRole === 'EDITOR';
+  // Hoàn tác (Ctrl+Z) / đặt lại các thao tác trên lịch trình: kéo thả, chuyển ngày, đổi giờ, thêm, xóa, tối ưu.
+  const itineraryUndo = useItineraryUndo({ tripId, canEdit, onReload: () => fetchTripDetails() });
   const isViewer = myRole === 'VIEWER';
 
   // Trong lúc chưa tải xong danh sách, vẫn hiện avatar chủ chuyến đi
@@ -537,9 +559,10 @@ const TripDetail = () => {
     }
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`${API_BASE_URL}/api/trips/days/${dayId}/destinations`, {
+      const res = await axios.post(`${API_BASE_URL}/api/trips/days/${dayId}/destinations`, {
         placeName: place.name, latitude: place.lat, longitude: place.lon, note: place.address, estimatedCost: 0
       }, { headers: { Authorization: `Bearer ${token}` }});
+      if (res.data?.id != null) itineraryUndo.push({ kind: 'add', label: `thêm "${place.name}"`, destId: res.data.id });
       setAddingDayId(null); setSearchQuery(''); setSuggestions([]); setSearchNotice(null); fetchTripDetails(); 
     } catch (err) { toast.error("Lỗi: " + (err.response?.data || err.message)); }
   };
@@ -564,11 +587,13 @@ const TripDetail = () => {
 
     const token = localStorage.getItem('token');
     if (!token) throw new Error('Bạn cần đăng nhập để thêm địa điểm.');
-    await axios.post(`${API_BASE_URL}/api/trips/days/${day.id}/destinations`, {
+    const res = await axios.post(`${API_BASE_URL}/api/trips/days/${day.id}/destinations`, {
       placeId,
       placeName,
       orderIndex: (day.destinations || []).length,
     }, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.data?.id != null) itineraryUndo.push({ kind: 'add', label: `thêm "${placeName}"`, destId: res.data.id });
+    toast.success(`Đã thêm ${placeName} vào Ngày ${day.dayNumber}.`);
     await fetchTripDetails();
     return day;
   };
@@ -603,6 +628,17 @@ const TripDetail = () => {
     return () => window.removeEventListener('travel-ai-reference-search', onReferenceSearch);
   }, [tripId]);
 
+  // Nút "Xem & áp dụng" trong AI chat sau khi trợ lý tối ưu lộ trình.
+  useEffect(() => {
+    const onOpenOptimize = (event) => {
+      const detail = event?.detail || {};
+      if (String(detail.tripId) !== String(tripId)) return;
+      setOptimizeDialog({ dayIds: Array.isArray(detail.dayIds) ? detail.dayIds : [] });
+    };
+    window.addEventListener('travel-ai-open-optimize', onOpenOptimize);
+    return () => window.removeEventListener('travel-ai-open-optimize', onOpenOptimize);
+  }, [tripId]);
+
   // Gắn vào khối Ngày (Lịch trình) và mục "Ngày N" ở thanh bên. Người chỉ xem (VIEWER) không thả được.
   const hasDestPayload = (event) => Array.from(event.dataTransfer?.types || []).includes(DEST_MIME_TYPE);
 
@@ -622,6 +658,11 @@ const TripDetail = () => {
     let insertAt = sameDay && fromIndex < toIndex ? toIndex - 1 : toIndex;
     insertAt = Math.max(0, Math.min(insertAt, targetList.length));
     if (sameDay && insertAt === fromIndex) return; // thả lại đúng chỗ cũ
+    itineraryUndo.push({
+      kind: 'order',
+      label: sameDay ? `đổi thứ tự "${moving?.placeName || 'địa điểm'}"` : `chuyển "${moving?.placeName || 'địa điểm'}" sang Ngày ${toDay.dayNumber}`,
+      days: orderSnapshot(trip),
+    });
     targetList.splice(insertAt, 0, moving);
 
     setTrip(prev => ({
@@ -731,9 +772,9 @@ const TripDetail = () => {
       setDroppingDayId(day.id);
       try {
         await addRecommendedPlaceToDay(place, day.id);
-        // AiAssistantChat lắng nghe sự kiện này để báo "Đã thêm ... vào Day N".
+        // AiAssistantChat lắng nghe sự kiện này để đánh dấu thẻ "Đã thêm vào Ngày N" (không thêm tin nhắn).
         window.dispatchEvent(new CustomEvent('travel-ai-place-added', {
-          detail: { tripId: trip?.id, placeName: place?.name, dayNumber: day.dayNumber },
+          detail: { tripId: trip?.id, placeId: place?.placeId ?? null, placeName: place?.name, dayNumber: day.dayNumber },
         }));
       } catch (err) {
         toast.error(getApiError(err, err?.message || 'Không thể thêm địa điểm vào lịch trình.'));
@@ -752,6 +793,24 @@ const TripDetail = () => {
       const token = localStorage.getItem('token');
       await axios.delete(`${API_BASE_URL}/api/trips/days/destinations/${dest.id}`, {
         headers: { Authorization: `Bearer ${token}` },
+      });
+      itineraryUndo.push({
+        kind: 'delete',
+        label: `xóa "${dest.placeName}"`,
+        dayId: day.id,
+        orderIds: (day.destinations || []).map(x => x.id),
+        dest: {
+          id: dest.id,
+          placeId: getDestPlaceId(dest) ?? null,
+          placeName: dest.placeName,
+          latitude: dest.latitude ?? null,
+          longitude: dest.longitude ?? null,
+          note: dest.note ?? null,
+          estimatedCost: dest.estimatedCost ?? null,
+          itemType: dest.itemType ?? null,
+          timeRange: dest.timeRange ?? null,
+          isVisited: Boolean(dest.isVisited),
+        },
       });
       if (activeDestination?.id === dest.id) {
         setActiveDestination(null);
@@ -822,6 +881,12 @@ const TripDetail = () => {
   const handleUpdateDestProperty = async (dayId, destId, field, value) => {
     // 1. Chuyển đổi tên field 'time' của API thành 'timeRange' của giao diện
     const stateField = field === 'time' ? 'timeRange' : field;
+    if (field === 'time') {
+      const before = (trip.tripDays || []).flatMap(d => d.destinations || []).find(d => d.id === destId);
+      if (before && (before.timeRange || '') !== (value || '')) {
+        itineraryUndo.push({ kind: 'time', label: `đổi giờ "${before.placeName}"`, destId, prev: before.timeRange || '', next: value || '' });
+      }
+    }
 
     const updatedDays = trip.tripDays.map(day => {
       if (day.id === dayId) {
@@ -1398,6 +1463,42 @@ const TripDetail = () => {
   if (loading) return <div className="h-screen flex items-center justify-center font-bold text-slate-500">Đang tải hành trình...</div>;
   if (!trip) return null;
 
+  // Nơi ở xuất phát của từng ngày: đêm trước (không có thì đêm nay). Đêm D thuộc stay có checkIn <= D < checkOut.
+  const isoOfDay = (day) => {
+    if (day.dayDate) return String(day.dayDate).slice(0, 10);
+    if (!trip.startDate || day.dayNumber == null) return null;
+    const d = new Date(`${String(trip.startDate).slice(0, 10)}T00:00:00`);
+    d.setDate(d.getDate() + day.dayNumber - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const prevIso = (iso) => {
+    const d = new Date(`${iso}T00:00:00`);
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const stayCovering = (iso) => stays.find(s => s.latitude != null
+    && String(s.checkInDate).slice(0, 10) <= iso && iso < String(s.checkOutDate).slice(0, 10));
+  const startStayOfDay = (day) => {
+    const iso = isoOfDay(day);
+    return iso ? (stayCovering(prevIso(iso)) || stayCovering(iso) || null) : null;
+  };
+  const legacyAccommodations = (trip.tripDays || []).flatMap(day => (day.destinations || [])
+    .filter(d => String(d.itemType || '').toUpperCase() === 'ACCOMMODATION' && hasCoord(d))
+    .map(dest => ({ dest, dayNumber: day.dayNumber, dayDate: isoOfDay(day) })));
+  const canOptimizeTrip = (trip.tripDays || []).some(d => (d.destinations || []).length >= 2);
+  const openOptimize = (dayIds = []) => setOptimizeDialog({ dayIds });
+  // Gợi ý "chuyển sang Ngày X" trong hộp tối ưu: thả vào cuối ngày đích.
+  const moveToDayEnd = async (destId, toDayId) => {
+    const toDay = (trip.tripDays || []).find(d => d.id === toDayId);
+    if (!toDay) return;
+    await moveDestination(destId, toDayId, (toDay.destinations || []).length); // moveDestination tự ghi hoàn tác
+  };
+  // Gọi sau khi server đã áp dụng nhưng trước khi tải lại: `trip` vẫn là thứ tự cũ.
+  const handleOptimizeApplied = ({ filledTimes } = {}) => {
+    itineraryUndo.push({ kind: 'order', label: 'tối ưu lộ trình', days: orderSnapshot(trip), filledTimes: filledTimes || {} });
+    fetchTripDetails();
+  };
+
   // Props dùng chung cho mọi ngày trong phần Lịch trình (ItineraryDay)
   const itineraryDayProps = {
     tripDays: trip.tripDays,
@@ -1408,7 +1509,7 @@ const TripDetail = () => {
     openTimePicker, activeTimePickerDestId, setActiveTimePickerDestId, timeDraft, setTimeDraft,
     pickTimeSlot, saveTime, expenseStats, openExpenseDialog, routeData, addingDayId, searchRef,
     searchNotice, searchQuery, setSearchQuery, setAddingDayId, setSearchNotice, visibleSuggestions,
-    handleAddDestination, partnerHours
+    handleAddDestination, partnerHours, startStayOfDay, openOptimize
   };
 
   return (
@@ -1674,7 +1775,28 @@ const TripDetail = () => {
             {/* Lịch trình chiếm toàn bộ chiều rộng; AI được mở từ bong bóng nổi ở góc màn hình. */}
             <div className="w-full p-6 sm:p-8 relative">
               <div className="max-w-3xl mx-auto w-full">
-                <h2 className="text-3xl font-extrabold text-slate-900 mb-8">Lịch trình</h2>
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-3xl font-extrabold text-slate-900">Lịch trình</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {canOptimizeTrip && (
+                      <button
+                        type="button"
+                        onClick={() => openOptimize([])}
+                        title="Xếp lại thứ tự và giờ ghé theo quãng đường, giờ mở cửa, khung giờ đẹp và nơi ở"
+                        className="inline-flex items-center gap-2 rounded-full border border-[#FF5645]/30 bg-white px-4 py-2 text-sm font-bold text-[#FF5645] shadow-sm transition hover:bg-red-50"
+                      >
+                        <Wand2 className="h-4 w-4" /> Tối ưu cả chuyến
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <TripStays
+                  trip={trip}
+                  stays={stays}
+                  canEdit={canEdit}
+                  onChanged={fetchStays}
+                  legacyAccommodations={legacyAccommodations}
+                />
                 <div className="space-y-8">
                   {trip.tripDays?.map((day) => (
                     <ItineraryDay key={day.id} day={day} dayRef={el => dayRefs.current[day.id] = el} {...itineraryDayProps} />
@@ -1857,6 +1979,7 @@ const TripDetail = () => {
         />
 
         <TripMap
+          stays={stays}
           tripDays={trip.tripDays}
           destination={trip.destination}
           activeDestination={activeDestination}
@@ -2027,6 +2150,47 @@ const TripDetail = () => {
         onClose={() => setReportTarget(null)}
         onReported={(t) => setReportedReviewIds((prev) => new Set(prev).add(t.id))}
       />
+
+      {/* Thanh hoàn tác nổi: luôn thấy trên màn hình khi có thao tác lịch trình để quay lại */}
+      {canEdit && itineraryUndo.count > 0 && (
+        <div className="fixed bottom-6 left-1/2 z-[4800] flex -translate-x-1/2 items-center gap-1 rounded-full bg-slate-900/95 p-1.5 pl-4 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur">
+          <span className="hidden max-w-[260px] truncate text-xs font-semibold text-white/70 sm:inline" title={`Vừa ${itineraryUndo.last?.label}`}>
+            Vừa {itineraryUndo.last?.label}
+          </span>
+          <button
+            type="button"
+            onClick={itineraryUndo.undo}
+            disabled={itineraryUndo.busy}
+            title="Hoàn tác thao tác vừa làm (Ctrl+Z)"
+            className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-slate-900 transition hover:bg-slate-100 disabled:opacity-60"
+          >
+            <Undo2 className="h-3.5 w-3.5" /> {itineraryUndo.busy ? 'Đang hoàn tác…' : 'Hoàn tác'}
+            <kbd className="ml-0.5 hidden rounded bg-slate-100 px-1 text-[10px] font-semibold text-slate-500 sm:inline">Ctrl+Z</kbd>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(`Đặt lại lịch trình như trước ${itineraryUndo.count} thao tác gần đây?`)) itineraryUndo.reset();
+            }}
+            disabled={itineraryUndo.busy}
+            title="Quay về lịch trình trước tất cả các thao tác trong phiên này"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold text-white/90 transition hover:bg-white/10 disabled:opacity-60"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Đặt lại ({itineraryUndo.count})
+          </button>
+        </div>
+      )}
+
+      {optimizeDialog && (
+        <OptimizeItineraryDialog
+          tripId={trip.id}
+          dayIds={optimizeDialog.dayIds}
+          canEdit={canEdit}
+          onClose={() => setOptimizeDialog(null)}
+          onApplied={handleOptimizeApplied}
+          onMoveDestination={canEdit ? moveToDayEnd : null}
+        />
+      )}
 
       {/* AI Travel Assistant dạng bong bóng nổi, dùng được ở mọi tab của TripDetail. */}
       {trip?.id && !isViewer && (

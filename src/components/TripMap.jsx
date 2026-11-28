@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { MapContainer, Marker, useMap, useMapEvents, Polyline } from 'react-leaflet';
+import { MapContainer, Marker, Tooltip, useMap, useMapEvents, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import { Navigation } from 'lucide-react';
 import { MapHoverPreview, getDestPlaceId } from './PlaceHoverPreview';
@@ -125,7 +125,18 @@ const getMarkerIcon = (number, isActive, color) => {
   return markerIconCache.get(key);
 };
 
+// Marker nơi ở (khách sạn/homestay): ô vuông bo góc màu chàm có biểu tượng giường.
+const STAY_ICON = L.divIcon({
+  className: 'custom-div-icon',
+  html: '<div style="background:#4f46e5;color:#fff;width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 3px 8px rgba(79,70,229,.45)">'
+    + '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M2 20v-8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v8"/><path d="M4 10V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/><path d="M12 4v6"/><path d="M2 18h20"/></svg></div>',
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
+});
+
 const TripMap = ({
+  stays = [],
   tripDays, activeDestination, isPanelOpen, setMapDayMode, mapDayMode, mapDayId, dayHasStops,
   setActiveDestination, savingOrder, directions, setDirections, openDirections, directionStops,
   isSidebarOpen, hideHover, mapStops, boundsKey, routeDays, routeData, hover, selectDestination,
@@ -220,6 +231,13 @@ const TripMap = ({
               className={seg.approx ? undefined : 'tp-route-line'}
             />
           )))}
+
+        {/* Nơi ở của chuyến đi */}
+        {stays.filter(s => s.latitude != null && s.longitude != null).map(s => (
+          <Marker key={`stay-${s.id}`} position={[Number(s.latitude), Number(s.longitude)]} icon={STAY_ICON} zIndexOffset={-100}>
+            <Tooltip direction="top" offset={[0, -14]}>Nơi ở: {s.name}</Tooltip>
+          </Marker>
+        ))}
 
         {/* Cắm cờ các điểm đến (số thứ tự khớp với danh sách trong từng ngày) */}
         {mapStops.map((s) => (

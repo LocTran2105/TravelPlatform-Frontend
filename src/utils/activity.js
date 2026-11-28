@@ -49,6 +49,16 @@ export const describeActivity = (item) => {
       return detail && /^Day\s/i.test(detail)
         ? `đã sắp xếp lại thứ tự ${viDay(detail)}`
         : `đã sắp xếp lại lịch trình${detail ? ` (${detail})` : ''}`;
+    case 'ITINERARY_OPTIMIZED':
+      return detail && /^Day\s/i.test(detail)
+        ? `đã tối ưu lộ trình ${viDay(detail)}`
+        : `đã tối ưu lộ trình${detail ? ` (${detail})` : ''}`;
+    case 'STAY_ADDED':
+      return `đã thêm nơi ở ${quote(label)}`;
+    case 'STAY_UPDATED':
+      return `đã cập nhật nơi ở ${quote(label)}`;
+    case 'STAY_REMOVED':
+      return `đã xóa nơi ở ${quote(label)}`;
     case 'DESTINATION_REMOVED':
       return `đã xóa địa điểm ${quote(label)}${detail ? ` khỏi ${viDay(detail)}` : ''}`;
     case 'EXPENSE_ADDED':

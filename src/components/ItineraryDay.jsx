@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import {
   MapPin, Plus, Search, X, Car, CheckSquare, Clock, Trash2, ArrowUp, ArrowDown, CornerDownRight, Navigation,
-  AlertTriangle
+  AlertTriangle, Wand2, BedDouble
 } from 'lucide-react';
 import { DAY_COLORS, formatFullDate, formatVND } from '../utils/tripDetail';
 import { DAY_LABELS, checkVisitTime, formatDayHours, isoWeekday, visitWarning } from '../utils/openingHours';
@@ -50,7 +50,7 @@ const ItineraryDay = ({
   handleToggleVisited, openTimePicker, activeTimePickerDestId, setActiveTimePickerDestId, timeDraft,
   setTimeDraft, pickTimeSlot, saveTime, expenseStats, openExpenseDialog, routeData, addingDayId,
   searchRef, searchNotice, searchQuery, setSearchQuery, setAddingDayId, setSearchNotice,
-  visibleSuggestions, handleAddDestination, partnerHours = {}
+  visibleSuggestions, handleAddDestination, partnerHours = {}, startStayOfDay, openOptimize
 }) => {
   // Cùng màu với lộ trình của ngày này trên bản đồ
   const dayIndex = Math.max(0, (tripDays || []).findIndex((d) => d.id === day.id));
@@ -63,16 +63,36 @@ const ItineraryDay = ({
         {dropDayId === day.id && <span className="ml-auto text-xs font-bold text-indigo-600">Thả để thêm vào Ngày {day.dayNumber}</span>}
         {droppingDayId === day.id && <span className="ml-auto text-xs font-bold text-slate-500">Đang thêm địa điểm…</span>}
         {dropDayId !== day.id && droppingDayId !== day.id && dayHasStops(day.id) && (
-          <button
-            type="button"
-            onClick={() => openDayDirections(day.id)}
-            title="Mở chỉ đường cho cả ngày trên Google Maps"
-            className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold normal-case text-slate-600 transition hover:border-[#FF5645] hover:text-[#FF5645]"
-          >
-            <Navigation className="h-3.5 w-3.5" /> Chỉ đường
-          </button>
+          <span className="ml-auto flex items-center gap-2">
+            {openOptimize && (day.destinations || []).length >= 2 && (
+              <button
+                type="button"
+                onClick={() => openOptimize([day.id])}
+                title="Xếp lại thứ tự và giờ ghé theo quãng đường, giờ mở cửa và khung giờ đẹp"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#FF5645]/30 px-3 py-1.5 text-xs font-bold normal-case text-[#FF5645] transition hover:bg-red-50"
+              >
+                <Wand2 className="h-3.5 w-3.5" /> Tối ưu
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => openDayDirections(day.id)}
+              title="Mở chỉ đường cho cả ngày trên Google Maps"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold normal-case text-slate-600 transition hover:border-[#FF5645] hover:text-[#FF5645]"
+            >
+              <Navigation className="h-3.5 w-3.5" /> Chỉ đường
+            </button>
+          </span>
         )}
       </h3>
+      {(() => {
+        const stay = startStayOfDay?.(day);
+        return stay ? (
+          <p className="-mt-3 mb-5 inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">
+            <BedDouble className="h-3.5 w-3.5" /> Xuất phát từ {stay.name}
+          </p>
+        ) : null;
+      })()}
       
       <div className="space-y-4 mb-4">
         {(!day.destinations || day.destinations.length === 0) ? (

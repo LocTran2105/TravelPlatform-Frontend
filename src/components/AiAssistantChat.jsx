@@ -22,8 +22,10 @@ import {
   Maximize2,
   Minimize2,
   GripHorizontal,
+  CheckCircle2,
 } from 'lucide-react';
 import { API_BASE_URL } from '../config/api';
+import { toast } from '../utils/toast';
 
 const PLACE_MIME_TYPE = 'application/x-travel-place';
 
@@ -243,6 +245,10 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
   const [conversationId, setConversationId] = useState(null);
   const [targetDayId, setTargetDayId] = useState(firstDayId);
   const [addingPlaceId, setAddingPlaceId] = useState(null);
+  // Thẻ đã được thêm vào ngày nào: hiện ngay trên thẻ, KHÔNG thêm tin nhắn mới (tránh khung chat tự cuộn xuống).
+  const [addedPlaces, setAddedPlaces] = useState({}); // { placeKey: [dayNumber, ...] }
+  const messagesBoxRef = useRef(null);
+  const nearBottomRef = useRef(true);
   const [placeCoverImages, setPlaceCoverImages] = useState({});
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -310,9 +316,24 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
     });
   }, [messages]);
 
+  // Chỉ tự cuộn xuống khi có tin nhắn mới mà người dùng đang ở cuối khung (hoặc vừa tự gửi).
+  // Đang kéo lên xem/kéo thẻ địa điểm thì giữ nguyên vị trí.
+  const lastSender = messages[messages.length - 1]?.sender;
   useEffect(() => {
-    if (isOpen) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, isLoading, isOpen]);
+    if (!isOpen) return;
+    if (nearBottomRef.current || lastSender === 'user') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [messages.length, lastSender, isLoading, isOpen]);
+
+  const markAdded = (placeKey, dayNumber) => {
+    if (placeKey == null) return;
+    const key = String(placeKey);
+    setAddedPlaces((previous) => {
+      const days = previous[key] || [];
+      return days.includes(dayNumber) ? previous : { ...previous, [key]: [...days, dayNumber] };
+    });
+  };
 
   useEffect(() => {
     if (isOpen) inputRef.current?.focus();
@@ -323,11 +344,7 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
     const onPlaceAdded = (event) => {
       const detail = event?.detail || {};
       if (String(detail.tripId) !== String(tripId)) return;
-      setMessages((previous) => [...previous, {
-        sender: 'ai',
-        text: `Đã thêm ${detail.placeName || 'địa điểm'} vào Day ${detail.dayNumber || ''} trong lịch trình.`,
-        recommendations: [],
-      }]);
+      markAdded(detail.placeId ?? detail.placeName, detail.dayNumber);
     };
     window.addEventListener('travel-ai-place-added', onPlaceAdded);
     return () => window.removeEventListener('travel-ai-place-added', onPlaceAdded);
@@ -340,6 +357,7 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
       recommendations,
       targetDayNumber: focus.targetDayNumber ?? null,
       anchorName: focus.anchorName ?? null,
+      optimizeDayIds: focus.optimizeDayIds ?? null,
     }]);
   };
 
@@ -377,7 +395,11 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
       appendAssistantMessage(
         aiData.assistantMessage || aiData.message || 'Mình đã xử lý xong yêu cầu.',
         normalizeRecommendations(aiData),
-        { targetDayNumber: aiData.targetDayNumber ?? null, anchorName: aiData.anchorName ?? null }
+        {
+          targetDayNumber: aiData.targetDayNumber ?? null,
+          anchorName: aiData.anchorName ?? null,
+          optimizeDayIds: Array.isArray(aiData.optimizeDayIds) ? aiData.optimizeDayIds : null,
+        }
       );
     } catch (error) {
       console.error('Lỗi AI Chat:', error);
@@ -442,14 +464,16 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
       }
 
       const selectedDay = tripDays.find((day) => String(day.id) === String(selectedDayId));
-      appendAssistantMessage(`Đã thêm ${placeName} vào Day ${selectedDay?.dayNumber || ''} của chuyến đi.`);
+      markAdded(placeKey, selectedDay?.dayNumber);
+      // TripDetail (onAddPlaceToDay) đã tự báo "Đã thêm"; chỉ báo khi tự gọi API ở đây.
+      if (typeof onAddPlaceToDay !== 'function') toast.success(`Đã thêm ${placeName} vào Ngày ${selectedDay?.dayNumber || ''}.`);
     } catch (error) {
       console.error('Lỗi thêm địa điểm vào Trip:', error);
       const messageText = error.response?.data?.message
         || (typeof error.response?.data === 'string' ? error.response.data : null)
         || error.message
         || 'Không thể thêm địa điểm vào lịch trình. Vui lòng thử lại.';
-      appendAssistantMessage(messageText);
+      toast.error(messageText);
     } finally {
       setAddingPlaceId(null);
     }
@@ -575,12 +599,31 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
             )}
           </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/80 p-4">
+          <div
+            ref={messagesBoxRef}
+            onScroll={(event) => {
+              const el = event.currentTarget;
+              nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+            }}
+            className="flex-1 space-y-4 overflow-y-auto bg-slate-50/80 p-4"
+          >
             {messages.map((message, index) => (
               <div key={`${index}-${message.sender}`} className={`flex flex-col ${message.sender === 'user' ? 'items-end' : 'items-start'}`}>
                 <div className={`max-w-[92%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-sm ${message.sender === 'user' ? 'rounded-br-md tp-ai-user text-white' : 'rounded-bl-md border border-slate-100 bg-white text-slate-700'}`}>
                   {message.text}
                 </div>
+
+                {message.optimizeDayIds?.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent('travel-ai-open-optimize', {
+                      detail: { tripId, dayIds: message.optimizeDayIds },
+                    }))}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full tp-ai-user px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
+                  >
+                    <Route className="h-3.5 w-3.5" /> Xem &amp; áp dụng
+                  </button>
+                )}
 
                 {message.recommendations?.length > 0 && (
                   <div className="mt-3 w-full space-y-2.5">
@@ -721,6 +764,14 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
                                   {tripDays.length ? 'Thêm vào ngày đã chọn' : 'Chuyến đi chưa có ngày để thêm'}
                                 </button>
                               )}
+                              {(() => {
+                                const added = addedPlaces[String(place?.placeId ?? place?.id ?? '')] || addedPlaces[String(placeName)];
+                                return added?.length ? (
+                                  <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+                                    <CheckCircle2 className="h-3.5 w-3.5" /> Đã thêm vào Ngày {added.filter(Boolean).join(', ')}
+                                  </p>
+                                ) : null;
+                              })()}
                             </div>
                           </div>
                         </article>
