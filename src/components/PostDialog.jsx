@@ -8,6 +8,7 @@ import { formatCount, formatCountFull } from './formatCount';
 import MediaGallery from './MediaGallery';
 import CommentSection from './CommentSection';
 import ReportDialog from './ReportDialog';
+import PostTripCard from './PostTripCard';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), video[controls], [tabindex]:not([tabindex="-1"])';
 
@@ -166,6 +167,12 @@ export default function PostDialog({ post, currentUser, showVisibility = false, 
               <div className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-lg bg-red-50 px-3 py-1.5 text-sm font-bold text-[#FF5645]">
                 <MapPin className="h-4 w-4 shrink-0" />
                 <span className="truncate">{post.locationName}</span>
+              </div>
+            )}
+
+            {post.trip && (
+              <div className="mt-3">
+                <PostTripCard key={`${post.id}-${post.trip.snapshotAt || ''}`} post={post} currentUser={currentUser} />
               </div>
             )}
 

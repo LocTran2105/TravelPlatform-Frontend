@@ -6,7 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import { 
   ArrowLeft, Calendar, MapPin, Plus, 
   X, Users, Receipt,
-  Share2, MoreHorizontal,
+  Share2, MoreHorizontal, Megaphone,
   LayoutDashboard, CalendarDays, Wallet, Camera,
   Star,
   Trash2, Pencil
@@ -1548,6 +1548,16 @@ const TripDetail = () => {
                       className="tp-btn-primary px-4 py-2 text-sm"
                     >
                       <Share2 className="w-4 h-4" /> Chia sẻ
+                    </button>
+                  )}
+                  {/* Đăng lịch trình lên Cộng đồng: bài lưu bản chụp lịch trình + chi phí, ai xem được bài thì sao chép được */}
+                  {myRole === 'OWNER' && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/community', { state: { attachTripId: trip.id } })}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50"
+                    >
+                      <Megaphone className="w-4 h-4" /> Đăng lên cộng đồng
                     </button>
                   )}
                 </div>

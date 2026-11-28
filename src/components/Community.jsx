@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Camera, MapPin, Send,
   Heart, MessageCircle, Share2, X, MoreHorizontal, Pencil, Trash2, Flag,
-  ChevronLeft, ChevronRight, Play
+  ChevronLeft, ChevronRight, Play, Route, Unlink
 } from 'lucide-react';
 import FollowButton from './FollowButton';
 import SiteHeader from './site/SiteHeader';
 import SocialAmbient from './site/SocialAmbient';
 import CommentSection from './CommentSection';
 import ReportDialog from './ReportDialog';
+import PostTripCard from './PostTripCard';
+import { getMyTrips, removePostTrip } from '../api/postTripApi';
+import { formatDateRange, visibilityInfo } from '../utils/trips';
 import { formatCount, formatCountFull } from './formatCount';
 import { API_BASE_URL } from '../config/api';
 import { toast } from '../utils/toast';
@@ -100,8 +103,8 @@ const formatDate = (value) => {
 // Menu 3 chấm (chỉ hiện với bài của chính mình)
 // ---------------------------------------------------------------------------
 
-// Chủ bài: onEdit + onDelete. Người khác (đã đăng nhập): chỉ onReport.
-const PostMenu = ({ onEdit, onDelete, onReport, reported = false }) => {
+// Chủ bài: onEdit + onRemoveTrip (bài có lịch trình) + onDelete. Người khác (đã đăng nhập): chỉ onReport.
+const PostMenu = ({ onEdit, onRemoveTrip, onDelete, onReport, reported = false }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
 
@@ -147,6 +150,16 @@ const PostMenu = ({ onEdit, onDelete, onReport, reported = false }) => {
               className="flex w-full items-center gap-2.5 border-b border-slate-100 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
               <Pencil className="h-4 w-4" /> Chỉnh sửa
+            </button>
+          )}
+          {onRemoveTrip && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); onRemoveTrip(); }}
+              className="flex w-full items-center gap-2.5 border-b border-slate-100 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Unlink className="h-4 w-4" /> Gỡ lịch trình
             </button>
           )}
           {onDelete && (
@@ -468,6 +481,74 @@ const sharePost = async (post) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Chọn lịch trình để gắn vào bài (chỉ chuyến đi mình làm chủ, quyền hiển thị nào cũng được).
+// Bài lưu BẢN CHỤP lịch trình + chi phí lúc đăng; ai xem được bài thì xem và sao chép được.
+// ---------------------------------------------------------------------------
+const isOwnTrip = (trip, user) =>
+  Boolean(user && trip?.user && (trip.user.id === user.id || trip.user.email === user.email));
+
+/** Chuyến đi mình làm chủ, mới nhất trước. */
+const ownTripsOf = (trips, user) =>
+  trips.filter((t) => isOwnTrip(t, user)).sort((a, b) => (b.id || 0) - (a.id || 0));
+
+// containerRef bọc cả nút mở lẫn danh sách: bấm lại nút để đóng không bị mở lại ngay.
+const TripPicker = ({ containerRef, trips, loading, error, selectedId, onSelect, onClose }) => {
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) onClose();
+    };
+    const handleEscape = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [containerRef, onClose]);
+
+  return (
+    <div className="absolute left-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+      <p className="border-b border-slate-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-500">Chọn lịch trình của bạn</p>
+      <div className="max-h-72 overflow-y-auto">
+        {loading && (
+          <div className="flex justify-center py-5">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#FF5645]" />
+          </div>
+        )}
+        {!loading && error && <p className="px-4 py-3 text-sm text-red-600">{error}</p>}
+        {!loading && !error && trips.length === 0 && (
+          <p className="px-4 py-3 text-sm text-slate-500">
+            Bạn chưa có chuyến đi nào. <Link to="/plan" className="font-semibold text-[#FF5645] hover:underline">Lên kế hoạch ngay</Link>
+          </p>
+        )}
+        {!loading && !error && trips.map((trip) => {
+          const vis = visibilityInfo(trip.visibility);
+          const VisIcon = vis.Icon;
+          return (
+            <button
+              key={trip.id}
+              type="button"
+              onClick={() => onSelect(trip)}
+              className={`flex w-full items-start gap-3 border-b border-slate-50 px-4 py-3 text-left last:border-0 hover:bg-orange-50 ${
+                selectedId === trip.id ? 'bg-orange-50' : ''
+              }`}
+            >
+              <Route className="mt-0.5 h-4 w-4 shrink-0 text-[#FF5645]" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-slate-800">{trip.title}</p>
+                <p className="flex items-center gap-1 truncate text-xs text-slate-500">
+                  <VisIcon className="h-3 w-3 shrink-0" /> {vis.label} • {formatDateRange(trip.startDate, trip.endDate)}
+                </p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const Community = () => {
   const [user, setUser] = useState(readStoredUser);
   const [posts, setPosts] = useState([]);
@@ -495,6 +576,16 @@ const Community = () => {
   const [visibility, setVisibility] = useState('PUBLIC');
   const [isPosting, setIsPosting] = useState(false);
   const fileInputRef = useRef(null);
+
+  // Lịch trình gắn vào bài (chỉ chuyến đi mình làm chủ, không Riêng tư)
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [attachedTrip, setAttachedTrip] = useState(null);
+  const [tripPickerOpen, setTripPickerOpen] = useState(false);
+  const [myTrips, setMyTrips] = useState(null);          // null = chưa tải
+  const [tripsLoading, setTripsLoading] = useState(false);
+  const [tripsError, setTripsError] = useState('');
+  const tripBoxRef = useRef(null);
 
   // Vị trí (Photon API)
   const [locationName, setLocationName] = useState('');
@@ -694,6 +785,47 @@ const Community = () => {
     setShowDropdown(false);
   };
 
+  // --- Gắn lịch trình --------------------------------------------------------
+  const loadMyTrips = async () => {
+    setTripsLoading(true);
+    setTripsError('');
+    try {
+      setMyTrips(ownTripsOf(await getMyTrips(), user));
+    } catch (error) {
+      setTripsError('Không tải được danh sách chuyến đi: ' + errorMessage(error));
+    } finally {
+      setTripsLoading(false);
+    }
+  };
+
+  const openTripPicker = () => {
+    setTripPickerOpen((open) => !open);
+    if (myTrips === null && !tripsLoading) loadMyTrips();
+  };
+
+  const handleSelectTrip = (trip) => {
+    setAttachedTrip(trip);
+    setTripPickerOpen(false);
+  };
+
+  // Bấm "Đăng lên cộng đồng" ở trang chuyến đi -> mở trang này với chuyến đi đã gắn sẵn
+  const attachTripId = location.state?.attachTripId;
+  useEffect(() => {
+    if (!attachTripId || !user) return;
+    // Xóa state để tải lại trang / quay lại không gắn lần nữa
+    navigate(location.pathname, { replace: true, state: null });
+    // Không hủy khi effect chạy lại: navigate ở trên làm attachTripId đổi thành undefined ngay.
+    getMyTrips()
+      .then((all) => {
+        const trips = ownTripsOf(all, user);
+        setMyTrips(trips);
+        const trip = trips.find((t) => String(t.id) === String(attachTripId));
+        if (trip) setAttachedTrip(trip);
+      })
+      .catch((error) => toast.error('Không tải được chuyến đi để gắn vào bài: ' + errorMessage(error)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachTripId]);
+
   // --- Chọn / bỏ file -------------------------------------------------------
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -762,7 +894,7 @@ const Community = () => {
   // --- Đăng bài -------------------------------------------------------------
   const handleCreatePost = async (e) => {
     e.preventDefault();
-    if (!caption.trim() && attachments.length === 0) return;
+    if (!caption.trim() && attachments.length === 0 && !attachedTrip) return;
 
     if (!getToken()) {
       toast.info('Vui lòng đăng nhập để đăng bài!');
@@ -776,6 +908,7 @@ const Community = () => {
     if (locationName) formData.append('locationName', locationName);
     if (latitude !== null) formData.append('latitude', latitude);
     if (longitude !== null) formData.append('longitude', longitude);
+    if (attachedTrip) formData.append('tripId', attachedTrip.id);
     // Cùng một khóa 'files' cho từng file: backend nhận List<MultipartFile>, giữ đúng thứ tự chọn.
     attachments.forEach((a) => formData.append('files', a.file));
 
@@ -788,6 +921,7 @@ const Community = () => {
       setLatitude(null);
       setLongitude(null);
       setVisibility('PUBLIC');
+      setAttachedTrip(null);
       clearAttachments();
       fetchPosts();
     } catch (error) {
@@ -889,6 +1023,22 @@ const Community = () => {
     }
   };
 
+  // --- Lịch trình trong bài: gỡ / cập nhật ---------------------------------
+  const replacePost = (updated) => {
+    if (!updated?.id) return;
+    setPosts((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+  };
+
+  const handleRemoveTrip = async (post) => {
+    if (!window.confirm('Gỡ lịch trình khỏi bài viết? Người khác sẽ không xem và sao chép được nữa. Các bản đã sao chép không bị ảnh hưởng.')) return;
+    try {
+      replacePost(await removePostTrip(post.id));
+      toast.success('Đã gỡ lịch trình khỏi bài viết.');
+    } catch (error) {
+      toast.error('Không thể gỡ lịch trình: ' + errorMessage(error));
+    }
+  };
+
   // --- Theo dõi / hủy theo dõi từ bài viết ---------------------------------
   // Cập nhật mọi bài của cùng tác giả để badge đổi ngay, rồi đồng bộ lại
   // (theo dõi/hủy theo dõi có thể làm hiện/ẩn bài FOLLOWERS / FRIENDS).
@@ -969,6 +1119,31 @@ const Community = () => {
                 <p role="alert" className="ml-14 mt-2 text-xs font-semibold text-red-600">{fileError}</p>
               )}
 
+              {/* Lịch trình đã gắn */}
+              {attachedTrip && (
+                <div className="ml-14 mt-3 flex items-center gap-3 rounded-xl border border-orange-100 bg-orange-50 px-3 py-2">
+                  <Route className="h-4 w-4 shrink-0 text-[#FF5645]" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-slate-800">{attachedTrip.title}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {formatDateRange(attachedTrip.startDate, attachedTrip.endDate)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Người xem bài sẽ thấy lịch trình và chi phí (theo quyền của bài viết) và có thể sao chép.
+                      Bài lưu bản tại thời điểm đăng, sửa chuyến đi sau này không làm đổi bài.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Bỏ lịch trình"
+                    onClick={() => setAttachedTrip(null)}
+                    className="shrink-0 text-slate-400 hover:text-red-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+
               {/* Thanh công cụ (chỉ MỘT khối, trước đây bị lặp 2 lần) */}
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
                 <div className="flex items-center gap-2">
@@ -987,6 +1162,31 @@ const Community = () => {
                     accept="image/*,video/*"
                     multiple
                   />
+
+                  {/* Gắn lịch trình */}
+                  <div className="relative" ref={tripBoxRef}>
+                    <button
+                      type="button"
+                      onClick={openTripPicker}
+                      aria-expanded={tripPickerOpen}
+                      className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                        attachedTrip ? 'bg-orange-50 text-[#E04B3B]' : 'text-slate-500 hover:bg-slate-100'
+                      }`}
+                    >
+                      <Route className="h-4 w-4 text-[#FF5645]" /> Lịch trình
+                    </button>
+                    {tripPickerOpen && (
+                      <TripPicker
+                        containerRef={tripBoxRef}
+                        trips={myTrips || []}
+                        loading={tripsLoading}
+                        error={tripsError}
+                        selectedId={attachedTrip?.id}
+                        onSelect={handleSelectTrip}
+                        onClose={() => setTripPickerOpen(false)}
+                      />
+                    )}
+                  </div>
 
                   {/* Tìm địa điểm */}
                   <div className="relative" ref={locationBoxRef}>
@@ -1058,7 +1258,7 @@ const Community = () => {
 
                   <button
                     type="submit"
-                    disabled={isPosting || (!caption.trim() && attachments.length === 0)}
+                    disabled={isPosting || (!caption.trim() && attachments.length === 0 && !attachedTrip)}
                     className="tp-btn-primary px-5 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isPosting ? 'Đang đăng...' : <><Send className="h-4 w-4" /> Đăng bài</>}
@@ -1168,6 +1368,7 @@ const Community = () => {
                       {own && (
                         <PostMenu
                           onEdit={() => setEditingPost(post)}
+                          onRemoveTrip={post.trip ? () => handleRemoveTrip(post) : undefined}
                           onDelete={() => handleDeletePost(post)}
                         />
                       )}
@@ -1188,6 +1389,16 @@ const Community = () => {
                     <div className="mb-4 inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-1.5 text-sm font-bold text-[#FF5645]">
                       <MapPin className="h-4 w-4" /> {post.locationName}
                     </div>
+                  )}
+
+                  {/* --- LỊCH TRÌNH GẮN TRONG BÀI (xem + sao chép) --- */}
+                  {post.trip && (
+                    <PostTripCard
+                      key={`${post.id}-${post.trip.snapshotAt || ''}`}
+                      post={post}
+                      currentUser={user}
+                      onPostUpdated={replacePost}
+                    />
                   )}
 
                   {/* --- MEDIA BÀI VIẾT (NHIỀU ẢNH/VIDEO) --- */}

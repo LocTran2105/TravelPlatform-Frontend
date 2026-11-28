@@ -44,6 +44,17 @@ export function describeNotification(item) {
       return { icon: 'comment', tone: 'sky', name, text: ' đã bình luận về bài viết của bạn', detail: '' };
     case 'COMMENT_REPLY':
       return { icon: 'reply', tone: 'sky', name, text: ' đã trả lời bình luận của bạn', detail: '' };
+    case 'TRIP_COPIED': {
+      // targetType POST: sao chép từ lịch trình trong bài viết; TRIP: sao chép trực tiếp chuyến đi
+      const what = item?.targetType === 'POST' ? 'lịch trình trong bài viết của bạn' : 'lịch trình của bạn';
+      return {
+        icon: 'copy', tone: 'emerald', name,
+        text: others > 0
+          ? ` và ${others} người khác đã sao chép ${what}`
+          : ` đã sao chép ${what}`,
+        detail: reason ? `“${reason}”` : '',
+      };
+    }
     case 'CONTENT_HIDDEN':
       return {
         icon: 'hidden', tone: 'amber', name: '',

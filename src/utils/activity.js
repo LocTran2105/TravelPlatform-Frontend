@@ -67,6 +67,8 @@ export const describeActivity = (item) => {
         : `đã đổi quyền của ${label || 'một thành viên'} thành ${roleName(detail)}`;
     case 'MEMBER_REMOVED':
       return `đã xóa ${label || 'một thành viên'} khỏi chuyến đi`;
+    case 'TRIP_COPIED':
+      return `đã tạo chuyến đi bằng cách sao chép lịch trình ${label ? `“${label}”` : 'của người khác'}${detail ? ` của @${detail}` : ''}`;
     default:
       return 'đã thay đổi chuyến đi';
   }
