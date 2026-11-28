@@ -47,3 +47,28 @@ export const getDestPlaceId = (dest) => {
   const n = Number(dest?.placeId ?? dest?.place?.id ?? null);
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 };
+
+/**
+ * Bài đăng có gắn đúng địa điểm này không (tab "Bài đăng" của địa điểm trong chuyến đi).
+ * Ô tìm kiếm ở Cộng đồng và ở chuyến đi có thể trả về cùng một quán với tên/tọa độ hơi khác nhau,
+ * nên so cả tên (đã chuẩn hóa) lẫn khoảng cách thay vì so chuỗi:
+ *  - cùng tọa độ (≤ 60 m), hoặc
+ *  - tên gần giống và cách ≤ 300 m, hoặc
+ *  - tên gần giống khi một bên không có tọa độ.
+ */
+export const postMatchesPlace = (post, place) => {
+  if (!post?.locationName || !place) return false;
+  const placeName = place.placeName || place.name;
+  const pLat = Number(place.latitude ?? place.lat);
+  const pLng = Number(place.longitude ?? place.lng ?? place.lon);
+  const hasPlaceCoord = Number.isFinite(pLat) && Number.isFinite(pLng) && (pLat !== 0 || pLng !== 0);
+  const hasPostCoord = post.latitude != null && post.longitude != null
+    && Number.isFinite(Number(post.latitude)) && Number.isFinite(Number(post.longitude));
+  const similar = namesSimilar(post.locationName, placeName)
+    || (normalizePlaceName(post.locationName).length >= 3 && normalizePlaceName(post.locationName) === normalizePlaceName(placeName));
+  if (hasPlaceCoord && hasPostCoord) {
+    const d = distanceMeters(pLat, pLng, Number(post.latitude), Number(post.longitude));
+    return d <= 60 || (similar && d <= 300);
+  }
+  return similar;
+};

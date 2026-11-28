@@ -526,11 +526,28 @@ const PlaceInfoPanel = ({
                   <div className="text-center py-8 text-slate-400">
                     <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
                     <p className="text-sm font-medium">Chưa có bài check-in nào.</p>
+                    <p className="mt-1 text-xs">Đăng bài ở Cộng đồng và gắn địa điểm này để bài hiện ở đây.</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
                     {placePosts.map(post => {
-                      if (!post.imageUrls || post.imageUrls.length === 0) return null;
+                      // Bài chỉ có chữ: thẻ trích dẫn chiếm cả hàng (trước đây bị ẩn dù vẫn được đếm)
+                      if (!post.imageUrls || post.imageUrls.length === 0) {
+                        return (
+                          <div key={post.id} className="col-span-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <div className="flex items-center gap-2.5">
+                              {post.authorAvatar
+                                ? <img src={post.authorAvatar} alt="" className="h-8 w-8 rounded-full object-cover" />
+                                : <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-50 text-sm font-bold text-[#E04B3B]">{String(post.authorName || '?').charAt(0).toUpperCase()}</span>}
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold text-slate-800">{post.authorName}</p>
+                                {post.createdAt && <p className="text-xs text-slate-400">{new Date(post.createdAt).toLocaleDateString('vi-VN')}</p>}
+                              </div>
+                            </div>
+                            {post.caption && <p className="mt-2.5 line-clamp-4 whitespace-pre-line text-sm leading-relaxed text-slate-700">{post.caption}</p>}
+                          </div>
+                        );
+                      }
                       return (
                         <div key={post.id} className="relative aspect-[4/5] rounded-2xl overflow-hidden group cursor-pointer shadow-sm border border-slate-200">
                           <img src={post.imageUrls[0]} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="Ảnh check-in" />

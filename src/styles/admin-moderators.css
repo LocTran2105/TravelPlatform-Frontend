@@ -1,25 +1,26 @@
-/* Trang Admin > Kiểm duyệt viên. Dùng thêm các class .portal-* có sẵn trong partner-admin.css */
+/* Trang Admin > Kiểm duyệt viên. Dùng thêm các class .portal-* có sẵn; màu lấy từ biến --p-* của portal.css để đổi theo sáng/tối */
 
 .adm-mod-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.adm-mod-identity strong { display: block; color: #202b3e; font-size: 14px; }
-.adm-mod-identity small { display: block; margin-top: 3px; color: #8591a3; font-size: 12px; overflow-wrap: anywhere; }
-.adm-mod-avatar { flex: 0 0 38px; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; object-fit: cover; color: #fff; background: #4f46e5; font-size: 14px; font-weight: 800; }
+.adm-mod-identity strong { display: block; color: var(--p-ink); font-size: 14px; }
+.adm-mod-identity small { display: block; margin-top: 3px; color: var(--p-muted); font-size: 12px; overflow-wrap: anywhere; }
+.adm-mod-avatar { flex: 0 0 38px; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; object-fit: cover; color: #fff; background: linear-gradient(135deg, #ff5645, #ffa53b); font-size: 14px; font-weight: 800; }
 
 .adm-mod-search { width: 100%; max-width: none; }
 .adm-mod-results { margin-top: 14px; min-height: 52px; }
-.adm-mod-hint { display: flex; align-items: center; gap: 8px; margin: 0; padding: 12px 2px; color: #738096; font-size: 13px; line-height: 1.6; }
-.adm-mod-hint-error { color: #a3261b; }
+.adm-mod-hint { display: flex; align-items: center; gap: 8px; margin: 0; padding: 12px 2px; color: var(--p-muted); font-size: 13px; line-height: 1.6; }
+.adm-mod-hint-error { color: var(--p-danger); }
 
-.adm-mod-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--portal-border); border-radius: 14px; overflow: hidden; }
-.adm-mod-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 16px; background: #fff; }
-.adm-mod-list li + li { border-top: 1px solid #edf0f5; }
+.adm-mod-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--p-line); border-radius: 14px; overflow: hidden; }
+.adm-mod-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 16px; background: var(--p-raised); transition: background .15s ease; }
+.adm-mod-list li:hover { background: var(--p-hover); }
+.adm-mod-list li + li { border-top: 1px solid var(--p-line-soft, var(--p-line)); }
 
 .portal-small-button.adm-mod-wide { width: auto; min-width: 31px; height: 34px; padding: 0 12px; display: inline-flex; place-items: unset; align-items: center; justify-content: center; gap: 6px; font-size: 12px; font-weight: 750; white-space: nowrap; }
 
 .adm-mod-dialog { width: min(480px, 100%); }
 .adm-mod-dialog .portal-modal-header { margin-bottom: 16px; }
 .adm-mod-dialog .portal-modal-header h2 { font-size: 18px; line-height: 1.35; }
-.adm-mod-dialog-text { margin: 16px 0 0; color: #5f6c80; font-size: 13px; line-height: 1.7; }
+.adm-mod-dialog-text { margin: 16px 0 0; color: var(--p-muted); font-size: 13px; line-height: 1.7; }
 .portal-primary-button.adm-mod-danger { background: #dc2626; box-shadow: 0 5px 13px rgba(220, 38, 38, .18); }
 .portal-primary-button.adm-mod-danger:hover { background: #b91c1c; }
 

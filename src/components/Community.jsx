@@ -15,6 +15,7 @@ import ReportDialog from './ReportDialog';
 import { formatCount, formatCountFull } from './formatCount';
 import { API_BASE_URL } from '../config/api';
 import { toast } from '../utils/toast';
+import { searchPlaces } from '../utils/placeSearch';
 
 const API = `${API_BASE_URL}/api`;
 
@@ -640,9 +641,11 @@ const Community = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Tìm địa điểm (Photon) ------------------------------------------------
+  // --- Tìm địa điểm: cùng bộ tìm với trang chuyến đi (utils/placeSearch) -----------
+  // Địa điểm trong DB (đã xác minh / đã có trong lịch trình) ra trước, nên bài check-in gắn đúng tên + tọa độ
+  // mà trang chi tiết chuyến đi dùng -> bài hiện ở tab "Bài đăng" của địa điểm đó.
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     const fetchPlaces = async () => {
       if (searchQuery.trim().length < 2) {
@@ -651,35 +654,21 @@ const Community = () => {
       }
       setIsSearching(true);
       try {
-        const query = encodeURIComponent(searchQuery.trim());
-        const response = await fetch(`https://photon.komoot.io/api/?q=${query}&limit=5`);
-        const data = await response.json();
-        if (cancelled) return; // bỏ kết quả của lần gõ cũ
-        const places = (data.features ?? [])
-          .map((feature) => {
-            const prop = feature.properties;
-            return {
-              name: prop.name || prop.street || prop.city,
-              address: [prop.city, prop.state, prop.country].filter(Boolean).join(', '),
-              lat: feature.geometry.coordinates[1],
-              lon: feature.geometry.coordinates[0],
-            };
-          })
-          .filter((place) => place.name);
-        setSuggestions(places);
+        const places = await searchPlaces({ q: searchQuery, signal: controller.signal });
+        if (!controller.signal.aborted) setSuggestions(places);
       } catch (err) {
-        if (!cancelled) console.error(err);
+        if (!controller.signal.aborted && err?.name !== 'CanceledError') console.error(err);
       } finally {
-        if (!cancelled) setIsSearching(false);
+        if (!controller.signal.aborted) setIsSearching(false);
       }
     };
 
     const timer = setTimeout(() => {
       if (showDropdown) fetchPlaces();
-    }, 500);
+    }, 400);
 
     return () => {
-      cancelled = true;
+      controller.abort();
       clearTimeout(timer);
     };
   }, [searchQuery, showDropdown]);
@@ -1035,13 +1024,16 @@ const Community = () => {
                       <div className="absolute left-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
                         {suggestions.map((place, idx) => (
                           <div
-                            key={`${place.lat}-${place.lon}-${idx}`}
+                            key={place.key || `${place.lat}-${place.lon}-${idx}`}
                             onClick={() => handleSelectPlace(place)}
                             className="flex cursor-pointer items-start gap-3 border-b border-slate-50 px-4 py-3 last:border-0 hover:bg-orange-50"
                           >
                             <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#FF5645]" />
                             <div className="flex-1 overflow-hidden">
-                              <p className="truncate text-sm font-bold text-slate-800">{place.name}</p>
+                              <p className="flex items-center gap-1.5 truncate text-sm font-bold text-slate-800">
+                                <span className="truncate">{place.name}</span>
+                                {place.verified && <span className="shrink-0 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-600">Đã xác minh</span>}
+                              </p>
                               <p className="truncate text-xs text-slate-500">{place.address}</p>
                             </div>
                           </div>

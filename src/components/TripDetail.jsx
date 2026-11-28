@@ -19,7 +19,8 @@ import TripCoverImage from './TripCoverImage';
 import CoverImagePicker from './CoverImagePicker';
 import { usePlaceCovers, usePlaceActivity, getDestPlaceId } from './PlaceHoverPreview';
 import usePartnerHours from '../hooks/usePartnerHours';
-import { mergeSuggestions, photonOsmRef } from '../utils/place';
+import { postMatchesPlace } from '../utils/place';
+import { searchPlaces } from '../utils/placeSearch';
 import ItineraryDay from './ItineraryDay';
 import PlaceInfoPanel, { MediaPicker } from './PlaceInfoPanel';
 import ReportDialog from './ReportDialog';
@@ -511,50 +512,12 @@ const TripDetail = () => {
     const controller = new AbortController();
 
     const fetchPlaces = async () => {
-      const token = localStorage.getItem('token');
       // Điểm neo cho Photon: địa điểm đầu tiên đã có tọa độ trong chuyến đi.
       const anchorDest = (trip?.tripDays || []).flatMap(d => d.destinations || []).find(hasCoord);
       const anchor = anchorDest ? { lat: Number(anchorDest.latitude), lng: Number(anchorDest.longitude) } : null;
-
-      const dbRequest = axios.get(`${API_BASE_URL}/api/v1/places/search`, {
-        params: { q, destination: trip?.destination || '', limit: 5 },
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        signal: controller.signal,
-      }).then(res => (Array.isArray(res.data) ? res.data : []).map(p => ({
-        key: `db-${p.id}`,
-        source: 'db',
-        placeId: p.id,
-        verified: Boolean(p.verified),
-        osmRef: p.provider === 'OSM' ? p.providerPlaceId : null,
-        name: p.name,
-        address: p.address || p.destination || '',
-        lat: Number(p.latitude),
-        lon: Number(p.longitude),
-      })));
-
-      const photonParams = new URLSearchParams({ q, limit: '5' });
-      if (anchor) { photonParams.set('lat', String(anchor.lat)); photonParams.set('lon', String(anchor.lng)); }
-      const photonRequest = fetch(`https://photon.komoot.io/api/?${photonParams.toString()}`, { signal: controller.signal })
-        .then(res => (res.ok ? res.json() : { features: [] }))
-        .then(data => (data.features || []).map(f => {
-          const p = f.properties || {};
-          return {
-            key: `osm-${p.osm_type || ''}${p.osm_id}`,
-            source: 'photon',
-            osmRef: photonOsmRef(p.osm_type, p.osm_id),
-            name: p.name || p.street || p.city,
-            address: [p.street && p.name ? p.street : null, p.city, p.country].filter(Boolean).join(', '),
-            lat: f.geometry.coordinates[1],
-            lon: f.geometry.coordinates[0],
-          };
-        }).filter(p => p.name));
-
-      const [dbResult, photonResult] = await Promise.allSettled([dbRequest, photonRequest]);
-      if (controller.signal.aborted) return;
-      const fromDb = dbResult.status === 'fulfilled' ? dbResult.value : [];
-      const fromPhoton = photonResult.status === 'fulfilled' ? photonResult.value : [];
-      // Bỏ kết quả Photon trùng với địa điểm đã có trong DB (cùng mã OSM, hoặc tên gần giống ở gần nhau).
-      setSuggestions(mergeSuggestions(fromDb, fromPhoton));
+      // Cùng bộ tìm với ô gắn địa điểm ở trang Cộng đồng (utils/placeSearch): DB trước, Photon sau, bỏ trùng.
+      const results = await searchPlaces({ q, destination: trip?.destination || '', anchor, signal: controller.signal });
+      if (!controller.signal.aborted) setSuggestions(results);
     };
 
     const delay = setTimeout(() => { fetchPlaces().catch(err => { if (err?.name !== 'AbortError' && err?.name !== 'CanceledError') console.error(err); }); }, 400);
@@ -838,8 +801,12 @@ const TripDetail = () => {
     } catch (e) { setPlaceInfo({ extract: 'Không thể tải thông tin lúc này.', loading: false }); }
 
     try {
-      const postsRes = await axios.get(`${API_BASE_URL}/api/posts`);
-      const relatedPosts = postsRes.data.filter(p => p.locationName && p.locationName.toLowerCase().includes(dest.placeName.toLowerCase()));
+      // Gửi kèm token để thấy cả bài chỉ bạn bè / người theo dõi được xem.
+      const token = localStorage.getItem('token');
+      const postsRes = await axios.get(`${API_BASE_URL}/api/posts`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      // Nhận bài theo tên + tọa độ (ô tìm ở Cộng đồng có thể trả tên/tọa độ hơi khác cho cùng một quán).
+      const relatedPosts = (Array.isArray(postsRes.data) ? postsRes.data : []).filter(p => postMatchesPlace(p, dest));
+      if (requestId !== activeDestinationRequestRef.current) return; // đã chuyển sang địa điểm khác
       setPlacePosts(relatedPosts);
       
       const firstPostWithImg = relatedPosts.find(p => p.imageUrls && p.imageUrls.length > 0);
