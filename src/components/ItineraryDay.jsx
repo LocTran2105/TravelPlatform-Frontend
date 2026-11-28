@@ -3,7 +3,7 @@ import {
   MapPin, Plus, Search, X, Car, CheckSquare, Clock, Trash2, ArrowUp, ArrowDown, CornerDownRight, Navigation,
   AlertTriangle
 } from 'lucide-react';
-import { formatFullDate, formatVND } from '../utils/tripDetail';
+import { DAY_COLORS, formatFullDate, formatVND } from '../utils/tripDetail';
 import { DAY_LABELS, checkVisitTime, formatDayHours, isoWeekday, visitWarning } from '../utils/openingHours';
 import { getDestPlaceId } from '../utils/place';
 
@@ -52,9 +52,14 @@ const ItineraryDay = ({
   searchRef, searchNotice, searchQuery, setSearchQuery, setAddingDayId, setSearchNotice,
   visibleSuggestions, handleAddDestination, partnerHours = {}
 }) => {
+  // Cùng màu với lộ trình của ngày này trên bản đồ
+  const dayIndex = Math.max(0, (tripDays || []).findIndex((d) => d.id === day.id));
+  const dayColor = DAY_COLORS[dayIndex % DAY_COLORS.length];
   return (
-    <div data-day-id={day.id} ref={dayRef} {...getDayDropProps(day)} className={`bg-white border rounded-3xl p-6 shadow-sm transition-all ${dropDayId === day.id ? 'border-indigo-400 ring-4 ring-indigo-100 bg-indigo-50/30' : focusedDayId === day.id ? 'border-[#FF5645] ring-4 ring-[#FF5645]/10' : 'border-slate-200'}`}>
-      <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-3 mb-6"><span className="bg-slate-900 text-white text-xs px-3 py-1 rounded-md uppercase tracking-wider">Ngày {day.dayNumber}</span><span className="text-slate-500">{formatFullDate(day.dayDate)}</span>
+    <div data-day-id={day.id} ref={dayRef} {...getDayDropProps(day)} style={{ '--day': dayColor }}
+      data-focused={dropDayId !== day.id && focusedDayId === day.id}
+      className={`tp-day-card bg-white border rounded-3xl p-6 shadow-sm transition-all duration-300 ${dropDayId === day.id ? 'border-indigo-400 ring-4 ring-indigo-100 bg-indigo-50/30' : 'border-slate-200'}`}>
+      <h3 className="font-bold text-slate-800 text-lg flex items-center gap-3 mb-6"><span className="tp-day-badge">Ngày {day.dayNumber}</span><span className="text-slate-500">{formatFullDate(day.dayDate)}</span>
         {dropDayId === day.id && <span className="ml-auto text-xs font-bold text-indigo-600">Thả để thêm vào Ngày {day.dayNumber}</span>}
         {droppingDayId === day.id && <span className="ml-auto text-xs font-bold text-slate-500">Đang thêm địa điểm…</span>}
         {dropDayId !== day.id && droppingDayId !== day.id && dayHasStops(day.id) && (
@@ -97,7 +102,8 @@ const ItineraryDay = ({
                   selectDestination(dest, idx);
                 }} 
                 title={canEdit ? 'Kéo để sắp xếp lại hoặc chuyển sang ngày khác' : undefined}
-                className={`flex gap-3 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-all ${draggingDestId === dest.id ? 'opacity-40' : ''} ${isActive ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-50'}`}
+                style={{ animationDelay: `${Math.min(idx, 8) * 60}ms` }}
+                className={`tp-stop-row flex gap-3 items-start group cursor-pointer p-2 -ml-2 rounded-xl transition-all ${draggingDestId === dest.id ? 'opacity-40' : ''} ${isActive ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-slate-50'}`}
               >
                 <div className="flex flex-col items-center mt-2 w-8 shrink-0">
                   {isVisited ? (
@@ -105,13 +111,13 @@ const ItineraryDay = ({
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                     </div>
                   ) : (
-                    <div className={`w-7 h-7 rounded-full text-white text-xs font-extrabold flex items-center justify-center shadow-sm transition-all ${isActive ? 'bg-cyan-500 scale-110' : 'bg-cyan-500/80 group-hover:bg-cyan-500'}`}>
+                    <div className={`tp-stop-number w-7 h-7 rounded-full text-white text-xs font-extrabold flex items-center justify-center transition-transform duration-300 ${isActive ? 'scale-125' : 'group-hover:scale-110'}`}>
                       {idx + 1}
                     </div>
                   )}
                   
                   {idx !== day.destinations.length - 1 && (
-                    <div className="w-[1.5px] h-full bg-slate-200 border-l border-dashed border-slate-300 mt-2 min-h-[30px]"></div>
+                    <div className="tp-stop-line h-full mt-2 min-h-[30px]"></div>
                   )}
                 </div>
 
@@ -315,7 +321,7 @@ const ItineraryDay = ({
                                 </button>
                                 <button
                                   onClick={() => saveTime(day.id, dest.id)}
-                                  className="px-5 py-2 bg-[#FF5645] text-white font-bold text-sm rounded-full hover:bg-[#E04B3B] transition-colors"
+                                  className="tp-btn-primary px-5 py-2 text-sm rounded-full"
                                 >
                                   Lưu
                                 </button>

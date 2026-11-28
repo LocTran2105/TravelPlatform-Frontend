@@ -32,13 +32,13 @@ export default function NotificationItem({ item, onOpen, onRemove }) {
       data-testid="notification-item"
       data-unread={item.read ? 'false' : 'true'}
       className={`group relative flex items-start gap-3 px-4 py-3 transition-colors ${
-        item.read ? 'bg-white hover:bg-slate-50' : 'bg-emerald-50/60 hover:bg-emerald-50'
+        item.read ? 'bg-white hover:bg-slate-50' : 'bg-orange-50/70 hover:bg-orange-50'
       }`}
     >
       <button
         type="button"
         onClick={() => onOpen(item)}
-        className="flex min-w-0 flex-1 items-start gap-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+        className="flex min-w-0 flex-1 items-start gap-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
       >
         <span className="relative mt-0.5 shrink-0">
           {avatar ? (
@@ -64,14 +64,14 @@ export default function NotificationItem({ item, onOpen, onRemove }) {
               {view.detail}
             </span>
           )}
-          <span className={`mt-1 block text-xs ${item.read ? 'text-slate-400' : 'font-medium text-emerald-600'}`}>
+          <span className={`mt-1 block text-xs ${item.read ? 'text-slate-400' : 'font-medium text-[#E04B3B]'}`}>
             {timeAgo(item.eventAt || item.createdAt)}
           </span>
         </span>
       </button>
 
       {!item.read && (
-        <span aria-label="Chưa đọc" className="mt-3 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
+        <span aria-label="Chưa đọc" className="mt-3 h-2.5 w-2.5 shrink-0 rounded-full bg-[#FF5645]" />
       )}
       {onRemove && (
         <button

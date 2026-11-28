@@ -109,7 +109,7 @@ const TripMembersDialog = ({ trip, members, myId, isOwner, onManage, onClose }) 
     `rounded-lg py-2 text-sm font-semibold transition-all ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose} role="presentation">
+    <div className="tp-modal fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose} role="presentation">
       <div
         ref={dialogRef}
         role="dialog"
@@ -179,7 +179,7 @@ const TripMembersDialog = ({ trip, members, myId, isOwner, onManage, onClose }) 
 
               {groups.map((g) => (
                 <section key={g.key} className="mt-2 first:mt-0">
-                  <h3 className="sticky top-0 bg-white py-1 text-xs font-bold uppercase tracking-wide text-slate-400">{g.key}</h3>
+                  <h3 className="sticky top-0 bg-white py-1 text-xs font-bold text-slate-400">{g.key}</h3>
                   <ul className="space-y-3 pb-1 pt-1">
                     {g.items.map((item) => (
                       <li key={item.id} className="flex items-start gap-2.5" data-activity={item.action}>

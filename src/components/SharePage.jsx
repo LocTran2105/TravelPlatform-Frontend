@@ -171,7 +171,7 @@ const SharePage = () => {
                   <div className="mt-4 flex flex-col gap-2.5">
                     <Link
                       to={withRedirect('/login', returnPath)}
-                      className="rounded-full bg-[#FF5645] px-6 py-3 text-center text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#E04B3B]"
+                      className="tp-btn-primary rounded-full px-6 py-3 text-center text-sm"
                     >
                       Đăng nhập để tham gia
                     </Link>
@@ -200,7 +200,7 @@ const SharePage = () => {
                     type="button"
                     onClick={join}
                     disabled={joining}
-                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#FF5645] px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#E04B3B] disabled:opacity-70"
+                    className="tp-btn-primary mt-4 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-sm disabled:opacity-70"
                   >
                     {joining && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
                     {joining ? 'Đang tham gia...' : 'Tham gia chuyến đi'}

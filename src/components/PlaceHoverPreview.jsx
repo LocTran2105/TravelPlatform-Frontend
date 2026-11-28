@@ -160,7 +160,7 @@ function ActivityStrip({ lines, interactive, onDirectionsFrom, onDirectionsTo })
           )}
           {onDirectionsTo && (
             <button type="button" onClick={onDirectionsTo}
-              className="flex items-center justify-center gap-1 rounded-lg bg-[#FF5645] py-1.5 text-[11px] font-bold text-white hover:bg-[#E04B3B]">
+              className="tp-btn-primary flex items-center justify-center gap-1 rounded-lg py-1.5 text-[11px]">
               <Flag className="h-3 w-3" /> Đến đây
             </button>
           )}
@@ -218,7 +218,7 @@ export function PlaceHoverCard({ dest, number, color, coverUrl }) {
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-600 via-slate-700 to-slate-900 text-white/30">
           <Icon className="h-14 w-14" strokeWidth={1.5} />
-          <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider">
+          <span className="flex items-center gap-1 text-[11px] font-semibold">
             <ImageOff className="h-3 w-3" /> Chưa có ảnh
           </span>
         </div>
@@ -245,7 +245,7 @@ export function PlaceHoverCard({ dest, number, color, coverUrl }) {
 
       <div className="absolute bottom-0 left-0 right-0 p-4">
         {typeLabel && (
-          <p className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-white/75">
+          <p className="mb-1 flex items-center gap-1 text-[11px] font-bold text-white/75">
             <Icon className="h-3 w-3" /> {typeLabel}
           </p>
         )}

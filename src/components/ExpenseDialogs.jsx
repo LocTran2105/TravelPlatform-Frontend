@@ -15,7 +15,7 @@ const ExpenseDialogs = ({
       {/* ================= DIALOG THÊM CHI PHÍ ================= */}
       {expenseDialog && (
         <div
-          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
+          className="tp-modal fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
           onClick={closeExpenseDialog}
         >
           <div
@@ -165,7 +165,7 @@ const ExpenseDialogs = ({
                   <button
                     onClick={submitExpense}
                     disabled={isSavingExpense}
-                    className="px-14 py-3 bg-[#FF5645] text-white font-bold rounded-full hover:bg-[#E04B3B] transition-colors disabled:opacity-50"
+                    className="tp-btn-primary px-14 py-3 rounded-full disabled:opacity-50"
                   >
                     {isSavingExpense ? 'Đang lưu...' : 'Lưu'}
                   </button>
@@ -246,7 +246,7 @@ const ExpenseDialogs = ({
       {/* ================= DIALOG SỬA NGÂN SÁCH ================= */}
       {budgetDialogOpen && (
         <div
-          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
+          className="tp-modal fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
           onClick={() => { if (!isSavingBudget) setBudgetDialogOpen(false); }}
         >
           <div
@@ -280,7 +280,7 @@ const ExpenseDialogs = ({
               <button
                 onClick={saveBudget}
                 disabled={isSavingBudget}
-                className="px-12 py-3 bg-[#FF5645] text-white font-bold rounded-full hover:bg-[#E04B3B] transition-colors disabled:opacity-50"
+                className="tp-btn-primary px-12 py-3 rounded-full disabled:opacity-50"
               >
                 {isSavingBudget ? 'Đang lưu...' : 'Lưu'}
               </button>
@@ -292,7 +292,7 @@ const ExpenseDialogs = ({
       {/* ================= DIALOG CÂN ĐỐI NHÓM ================= */}
       {balanceDialog && (
         <div
-          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
+          className="tp-modal fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
           onClick={() => setBalanceDialog(null)}
         >
           <div
@@ -354,7 +354,7 @@ const ExpenseDialogs = ({
       {/* ================= DIALOG PHÂN TÍCH CHI TIÊU ================= */}
       {breakdownOpen && (
         <div
-          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
+          className="tp-modal fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
           onClick={() => setBreakdownOpen(false)}
         >
           <div

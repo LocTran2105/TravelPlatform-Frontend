@@ -1,12 +1,15 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useReducedMotion } from 'motion/react';
 import { Plane } from 'lucide-react';
+import JourneyTourLayer from './JourneyTourLayer';
+import { Car } from './journeyVehicles';
 
 /*
- * Bản đồ hành trình minh họa (SVG): đường đồng mức, rừng thông, hồ, các cung đường có vạch giữa,
- * lộ trình màu hoàng hôn nối các điểm ghim. Xe nhỏ chạy dọc từng cung đường rồi mờ dần,
- * mây trôi, và thỉnh thoảng có máy bay bay ngang kéo vệt khói (PlaneFlyby).
- * Người dùng bật "giảm chuyển động" thì chỉ còn bản đồ tĩnh.
+ * Bản đồ hành trình minh họa (SVG): đường đồng mức, rừng thông, đồng cỏ, hồ nước, các cung đường có vạch giữa.
+ * Lần lượt đổi qua các lịch trình mẫu (journeyTours): mỗi chuyến có đường đi riêng, một chiếc xe chạy theo,
+ * tới điểm nào thì ghim nảy lên và hiện tên điểm đó; đi hết thì cả lộ trình mờ đi và chuyển sang chuyến khác.
+ * Xe nhỏ chạy dọc các cung đường, mây trôi, thỉnh thoảng có máy bay bay ngang (PlaneFlyby).
+ * Người dùng bật "giảm chuyển động" thì chỉ còn bản đồ tĩnh với chuyến đầu tiên.
  */
 
 const W = 1200;
@@ -19,25 +22,29 @@ const ROADS = {
   west: 'M -40 250 C 120 230, 260 300, 400 285 S 520 330, 560 360',
 };
 
-// Lộ trình mẫu trong một ngày: Chợ Đà Lạt -> đèo -> Langbiang, rồi quay xuống Hồ Xuân Hương
-const ITINERARY = 'M 560 360 C 600 280, 680 210, 760 190 S 980 150, 1090 110';
-const ITINERARY_2 = 'M 560 360 S 780 430, 900 400';
-
-const PINS = [
-  { x: 560, y: 360, label: 'Chợ Đà Lạt', color: '#ff5645', delay: 0.5 },
-  { x: 760, y: 190, label: 'Đồi chè Cầu Đất', color: '#7c5cf0', delay: 0.8 },
-  { x: 1090, y: 110, label: 'Langbiang', color: '#0f7d68', delay: 1.1 },
-  { x: 900, y: 400, label: 'Hồ Xuân Hương', color: '#2f6fd6', delay: 1.4 },
-];
-
 // Mỗi xe: chạy trên đoạn [from, to] của một cung đường, nghỉ một quãng rồi chạy lại
 const CARS = [
-  { road: 'main', from: 0.02, to: 0.62, dur: 11, begin: 0.6, color: '#ff5645' },
-  { road: 'pass', from: 0.05, to: 0.8, dur: 13, begin: 2.2, color: '#7c5cf0' },
-  { road: 'main', from: 0.98, to: 0.45, dur: 12, begin: 4.5, color: '#0f7d68', reverse: true },
-  { road: 'lake', from: 0.0, to: 0.7, dur: 9, begin: 1.4, color: '#ffa53b' },
-  { road: 'west', from: 0.0, to: 0.95, dur: 10, begin: 6, color: '#2f6fd6' },
-  { road: 'pass', from: 0.92, to: 0.25, dur: 14, begin: 8, color: '#d93c6c', reverse: true },
+  { road: 'main', from: 0.02, to: 0.62, dur: 17, begin: 0.6, color: '#ff5645' },
+  { road: 'pass', from: 0.05, to: 0.8, dur: 20, begin: 2.2, color: '#7c5cf0' },
+  { road: 'main', from: 0.98, to: 0.45, dur: 18, begin: 5.5, color: '#0f7d68', reverse: true },
+  { road: 'lake', from: 0.0, to: 0.7, dur: 14, begin: 1.4, color: '#ffa53b' },
+  { road: 'west', from: 0.0, to: 0.95, dur: 16, begin: 7, color: '#2f6fd6' },
+  { road: 'pass', from: 0.92, to: 0.25, dur: 21, begin: 10, color: '#d93c6c', reverse: true },
+];
+
+// Đồng cỏ (vẽ dưới đường) và hồ nước
+const MEADOWS = [
+  { cx: 470, cy: 330, r: 95, ry: 42, seed: 2 },
+  { cx: 700, cy: 290, r: 70, ry: 30, seed: 4 },
+  { cx: 880, cy: 480, r: 110, ry: 40, seed: 6 },
+  { cx: 1150, cy: 130, r: 85, ry: 40, seed: 8 },
+  { cx: 260, cy: 470, r: 120, ry: 45, seed: 9 },
+  { cx: 960, cy: 300, r: 60, ry: 26, seed: 11 },
+];
+const LAKES = [
+  { d: 'M 975 412 C 990 378, 1060 372, 1098 392 C 1128 410, 1110 448, 1062 452 C 1010 456, 962 440, 975 412 Z', ripples: [[1010, 410], [1050, 430]] },
+  { d: 'M 600 505 C 630 470, 760 462, 830 490 C 880 512, 850 552, 760 556 C 670 560, 575 540, 600 505 Z', ripples: [[660, 500], [740, 520], [800, 500]] },
+  { d: 'M 525 150 C 540 128, 600 124, 618 144 C 632 162, 608 182, 570 182 C 538 182, 512 170, 525 150 Z', ripples: [[560, 150]] },
 ];
 
 // Số ngẫu nhiên cố định (cùng kết quả mỗi lần vẽ) để rải cây và đường đồng mức
@@ -65,20 +72,6 @@ const FORESTS = [
   { x: 1130, y: 420, w: 80, h: 60, n: 5 },
   { x: 820, y: 60, w: 140, h: 50, n: 7 },
 ];
-
-function Car({ color }) {
-  return (
-    <g>
-      <rect x="-11" y="-4" width="22" height="12" rx="4" fill="#1c2421" opacity=".18" />
-      <rect x="-11" y="-6" width="22" height="12" rx="4" fill={color} />
-      <rect x="2" y="-4.6" width="5" height="9.2" rx="1.6" fill="#1c2421" opacity=".55" />
-      <rect x="-8.5" y="-4.6" width="4" height="9.2" rx="1.3" fill="#1c2421" opacity=".38" />
-      <path d="M11 -4 L34 -11 L34 11 L11 4 Z" fill="url(#tp-beam)" style={{ opacity: 'var(--tp-beam-opacity)' }} />
-      <circle cx="10.6" cy="-3.4" r="1.2" style={{ fill: 'var(--tp-headlight)' }} />
-      <circle cx="10.6" cy="3.4" r="1.2" style={{ fill: 'var(--tp-headlight)' }} />
-    </g>
-  );
-}
 
 function PlaneFlyby() {
   const ref = useRef(null);
@@ -120,7 +113,7 @@ function PlaneFlyby() {
   );
 }
 
-export default function JourneyScene({ className = '', children, planes = true, labels = true }) {
+export default function JourneyScene({ className = '', children, planes = true, labels = true, onTourProgress }) {
   const reduce = useReducedMotion();
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const id = (name) => `tp${uid}-${name}`;
@@ -133,6 +126,17 @@ export default function JourneyScene({ className = '', children, planes = true, 
       s: 0.7 + rand() * 0.6,
       shade: rand() < 0.5 ? 'var(--tp-tree-1)' : 'var(--tp-tree-2)',
     }))).sort((a, b) => a.y - b.y);
+  }, []);
+
+  // Đồng cỏ: mảng xanh mềm + các khóm cỏ nhỏ rải bên trong
+  const meadows = useMemo(() => MEADOWS.map((m) => ({ key: m.seed, d: contour(m.cx, m.cy, m.r, m.ry, 0.12, m.seed) })), []);
+  const tufts = useMemo(() => {
+    const rand = seeded(23);
+    return MEADOWS.flatMap((m) => Array.from({ length: 7 }, () => {
+      const a = rand() * Math.PI * 2;
+      const k = Math.sqrt(rand()) * 0.8;
+      return { x: m.cx + Math.cos(a) * m.r * k, y: m.cy + Math.sin(a) * m.ry * k, s: 0.8 + rand() * 0.6 };
+    }));
   }, []);
 
   const hills = useMemo(() => [
@@ -172,6 +176,16 @@ export default function JourneyScene({ className = '', children, planes = true, 
 
         <rect width={W} height={H} fill={`url(#${id('land')})`} />
 
+        {/* Đồng cỏ */}
+        <g style={{ fill: 'var(--tp-grass)' }}>
+          {meadows.map((m) => <path key={m.key} d={m.d} />)}
+        </g>
+        <g fill="none" strokeWidth="1.6" strokeLinecap="round" style={{ stroke: 'var(--tp-grass-tuft)' }}>
+          {tufts.map((t, i) => (
+            <path key={i} transform={`translate(${t.x.toFixed(1)} ${t.y.toFixed(1)}) scale(${t.s.toFixed(2)})`} d="M0 0 L-3 -7 M0 0 L0 -9 M0 0 L3 -7" />
+          ))}
+        </g>
+
         {/* Đường đồng mức các quả đồi */}
         <g fill="none" strokeWidth="1.2" style={{ stroke: 'var(--tp-contour)' }}>
           {hills.map((h) => <path key={h.key} d={h.d} />)}
@@ -179,22 +193,22 @@ export default function JourneyScene({ className = '', children, planes = true, 
 
         {/* Suối và hồ */}
         <path d="M 1240 230 C 1180 280, 1150 320, 1110 360 S 1060 400, 1040 410" fill="none" strokeWidth="6" strokeLinecap="round" style={{ stroke: 'var(--tp-river)' }} />
-        <path d="M 975 412 C 990 378, 1060 372, 1098 392 C 1128 410, 1110 448, 1062 452 C 1010 456, 962 440, 975 412 Z"
-          fill={`url(#${id('lake')})`} strokeWidth="1.5" style={{ stroke: 'var(--tp-lake-stroke)' }} />
+        {LAKES.map((l, i) => (
+          <g key={i}>
+            <path d={l.d} fill={`url(#${id('lake')})`} strokeWidth="1.5" style={{ stroke: 'var(--tp-lake-stroke)' }} />
+            {/* gợn sóng lăn tăn */}
+            {l.ripples.map(([x, y], j) => (
+              <path key={j} d={`M ${x - 9} ${y} q 4.5 -3 9 0 t 9 0`} fill="none" strokeWidth="1.3" strokeLinecap="round"
+                className="tp-ripple" style={{ stroke: 'var(--tp-ripple)', animationDelay: `${(i + j) * 0.7}s` }} />
+            ))}
+          </g>
+        ))}
 
         {/* Cung đường: viền, mặt đường, vạch giữa */}
         <g fill="none" strokeLinecap="round">
           {Object.keys(ROADS).map((key) => <use key={`c-${key}`} href={`#${id(key)}`} strokeWidth="17" style={{ stroke: 'var(--tp-road-edge)' }} />)}
           {Object.keys(ROADS).map((key) => <use key={`r-${key}`} href={`#${id(key)}`} strokeWidth="12" style={{ stroke: 'var(--tp-road)' }} />)}
           {Object.keys(ROADS).map((key) => <use key={`m-${key}`} href={`#${id(key)}`} strokeWidth="1.4" strokeDasharray="7 9" style={{ stroke: 'var(--tp-road-mark)' }} />)}
-        </g>
-
-        {/* Lộ trình trong ngày, vẽ dần khi mở trang */}
-        <g fill="none" strokeLinecap="round">
-          <path d={ITINERARY} stroke={`url(#${id('route')})`} strokeWidth="9" strokeOpacity=".18" />
-          <path d={ITINERARY} stroke={`url(#${id('route')})`} strokeWidth="3.5" pathLength="1" className="tp-route-draw" />
-          <path d={ITINERARY_2} stroke={`url(#${id('route')})`} strokeWidth="9" strokeOpacity=".18" />
-          <path d={ITINERARY_2} stroke={`url(#${id('route')})`} strokeWidth="3.5" pathLength="1" className="tp-route-draw" style={{ animationDelay: '1.6s' }} />
         </g>
 
         {/* Rừng thông */}
@@ -224,22 +238,8 @@ export default function JourneyScene({ className = '', children, planes = true, 
           );
         })}
 
-        {/* Điểm ghim */}
-        {PINS.map((p) => (
-          <g key={p.label} transform={`translate(${p.x} ${p.y})`}>
-            <circle r="9" fill={p.color} opacity=".35" className="tp-pin-ring" style={{ animationDelay: `${p.delay}s` }} />
-            <g className="tp-pin-drop" style={{ animationDelay: `${p.delay}s` }}>
-              <path d="M0 0 C -4 -8, -12 -13, -12 -22 A 12 12 0 1 1 12 -22 C 12 -13, 4 -8, 0 0 Z" fill={p.color} strokeWidth="2.5" style={{ stroke: 'var(--tp-pin-stroke)' }} />
-              <circle cx="0" cy="-22" r="4.5" style={{ fill: 'var(--tp-pin-stroke)' }} />
-              {labels && (
-                <g transform="translate(18 -30)">
-                  <rect x="0" y="-12" width={p.label.length * 7.2 + 18} height="24" rx="12" style={{ fill: 'var(--tp-label-bg)', stroke: 'var(--tp-label-line)' }} />
-                  <text x="9" y="4.5" fontSize="12.5" fontWeight="600" style={{ fill: 'var(--tp-label-ink)' }} fontFamily="'Be Vietnam Pro', system-ui, sans-serif">{p.label}</text>
-                </g>
-              )}
-            </g>
-          </g>
-        ))}
+        {/* Lịch trình mẫu đổi lần lượt */}
+        <JourneyTourLayer labels={labels} reduce={reduce} onProgress={onTourProgress} routeGradient={`url(#${id('route')})`} />
 
         {/* Mây trôi */}
         <g style={{ fill: 'var(--tp-cloud)' }}>

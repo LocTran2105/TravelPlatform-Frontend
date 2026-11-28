@@ -153,7 +153,7 @@ export default function CoverImagePicker({ tripId, currentUrl, onChanged, onClos
 
   return (
     <div
-      className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-900/60 p-4"
+      className="tp-modal fixed inset-0 z-[3000] flex items-center justify-center bg-slate-900/60 p-4"
       onMouseDown={(ev) => { if (ev.target === ev.currentTarget && !busy) onClose(); }}
     >
       <div
@@ -328,7 +328,7 @@ export default function CoverImagePicker({ tripId, currentUrl, onChanged, onClos
                 type="button"
                 onClick={saveLibrary}
                 disabled={!selectedId || busy}
-                className="flex items-center gap-1.5 rounded-full bg-[#FF5645] px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-[#E04B3B] disabled:cursor-not-allowed disabled:opacity-50"
+                className="tp-btn-primary flex items-center gap-1.5 rounded-full px-5 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy && <Loader2 className="h-4 w-4 animate-spin" />} Dùng ảnh này
               </button>
@@ -337,7 +337,7 @@ export default function CoverImagePicker({ tripId, currentUrl, onChanged, onClos
                 type="button"
                 onClick={saveUpload}
                 disabled={!file || busy}
-                className="flex items-center gap-1.5 rounded-full bg-[#FF5645] px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-[#E04B3B] disabled:cursor-not-allowed disabled:opacity-50"
+                className="tp-btn-primary flex items-center gap-1.5 rounded-full px-5 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy && <Loader2 className="h-4 w-4 animate-spin" />}
                 {busy ? (percent > 0 && percent < 100 ? `Đang tải ${percent}%` : 'Đang xử lý...') : 'Tải lên và dùng làm bìa'}

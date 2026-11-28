@@ -74,7 +74,7 @@ export default function useTripActions({ onDeleted, onVisibilityChanged, onShare
     <>
       {dialog && (
         <div
-          className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-900/50 px-4 backdrop-blur-sm"
+          className="tp-modal fixed inset-0 z-[3000] flex items-center justify-center bg-slate-900/50 px-4 backdrop-blur-sm"
           onClick={closeDialog}
         >
           <div

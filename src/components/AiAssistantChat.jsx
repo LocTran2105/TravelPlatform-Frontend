@@ -67,15 +67,21 @@ const normalizeRecommendations = (data) => {
   });
 };
 
+// 2026-11-27 -> 27/11/2026 (giữ nguyên nếu không đúng dạng)
+const viDate = (iso) => {
+  const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(String(iso || ''));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || '?');
+};
+
 const makeGreeting = (trip) => {
   const destination = trip?.destination?.trim();
   const budget = formatVND(trip?.totalBudget);
   const dateText = trip?.startDate
-    ? `${trip.startDate}${trip?.endDate ? ` đến ${trip.endDate}` : ''}`
+    ? `${viDate(trip.startDate)}${trip?.endDate ? ` đến ${viDate(trip.endDate)}` : ''}`
     : 'chưa xác định ngày đi';
 
   if (destination) {
-    return `Chào bạn! Mình thấy chuyến đi hiện tại của bạn là ${destination} (${dateText}${budget ? `, ngân sách ${budget}` : ''}). Mình sẽ sử dụng thông tin Trip này để tìm địa điểm thực tế và hỗ trợ sắp xếp lịch trình. Bạn có thể kéo thẻ địa điểm vào từng ngày trong Itinerary.`;
+    return `Chào bạn! Mình thấy chuyến đi hiện tại của bạn là ${destination} (${dateText}${budget ? `, ngân sách ${budget}` : ''}). Mình sẽ dựa vào chuyến đi này để tìm địa điểm thực tế và giúp bạn sắp xếp lịch trình. Bạn có thể kéo thẻ địa điểm thả vào từng ngày trong Lịch trình.`;
   }
   return 'Chào bạn! Chuyến đi hiện chưa có điểm đến. Hãy cho mình biết thành phố hoặc khu vực muốn khám phá nhé.';
 };
@@ -502,7 +508,7 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
           aria-label="Trợ lý AI du lịch"
           aria-modal="false"
           style={windowStyle}
-          className={`fixed z-[5000] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 ${
+          className={`tp-ai-window fixed z-[5000] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 ${
             isCompact ? 'bottom-20 right-2 h-[calc(100dvh-100px)] w-[calc(100vw-16px)]' : ''
           } ${interaction ? 'select-none' : ''}`}
         >
@@ -510,7 +516,7 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
             onPointerDown={(event) => startInteraction(event, 'move')}
             onDoubleClick={(event) => { if (!isCompact && !event.target.closest('button')) setIsMaximized((value) => !value); }}
             title={isCompact ? undefined : 'Kéo để di chuyển · Nhấp đúp để phóng to/thu nhỏ'}
-            className={`flex shrink-0 items-center justify-between bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-3.5 text-white ${
+            className={`flex shrink-0 items-center justify-between tp-ai-header px-4 py-3.5 text-white ${
               isCompact || isMaximized ? '' : interaction === 'move' ? 'cursor-grabbing' : 'cursor-grab'
             }`}
           >
@@ -561,18 +567,18 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
           <div className="shrink-0 border-b border-slate-100 bg-slate-50 px-4 py-3">
             <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600">
               {trip?.destination && <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200"><MapPin className="h-3 w-3" />{trip.destination}</span>}
-              {(trip?.startDate || trip?.endDate) && <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200"><CalendarDays className="h-3 w-3" />{trip.startDate || '?'} – {trip.endDate || '?'}</span>}
+              {(trip?.startDate || trip?.endDate) && <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200"><CalendarDays className="h-3 w-3" />{viDate(trip.startDate)} – {viDate(trip.endDate)}</span>}
               {formatVND(trip?.totalBudget) && <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200"><Wallet className="h-3 w-3" />{formatVND(trip.totalBudget)}</span>}
             </div>
             {tripDays.length > 0 && (
-              <p className="mt-2 text-[10px] text-slate-400">Kéo thẻ địa điểm vào Day tương ứng trong Itinerary hoặc chọn ngày rồi nhấn Thêm.</p>
+              <p className="mt-2 text-[11px] text-slate-500">Kéo thẻ địa điểm thả vào một ngày trong Lịch trình, hoặc chọn ngày rồi bấm Thêm.</p>
             )}
           </div>
 
           <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/80 p-4">
             {messages.map((message, index) => (
               <div key={`${index}-${message.sender}`} className={`flex flex-col ${message.sender === 'user' ? 'items-end' : 'items-start'}`}>
-                <div className={`max-w-[92%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-sm ${message.sender === 'user' ? 'rounded-br-md bg-slate-900 text-white' : 'rounded-bl-md border border-slate-100 bg-white text-slate-700'}`}>
+                <div className={`max-w-[92%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-sm ${message.sender === 'user' ? 'rounded-br-md tp-ai-user text-white' : 'rounded-bl-md border border-slate-100 bg-white text-slate-700'}`}>
                   {message.text}
                 </div>
 
@@ -581,7 +587,7 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
                     {(message.targetDayNumber || message.anchorName) && (
                       <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
                         {message.targetDayNumber && (
-                          <span className="rounded-full bg-slate-900 px-2.5 py-1 text-white">Gợi ý cho Ngày {message.targetDayNumber}</span>
+                          <span className="rounded-full tp-ai-user px-2.5 py-1 text-white">Gợi ý cho Ngày {message.targetDayNumber}</span>
                         )}
                         {message.anchorName && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-slate-600 ring-1 ring-slate-200">
@@ -627,7 +633,7 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
                           className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow-md active:cursor-grabbing"
                           title={isReference
                             ? 'Địa điểm tham khảo: thả vào một ngày để mở ô tìm kiếm địa chỉ'
-                            : 'Kéo thẻ này và thả vào một ngày trong Itinerary'}
+                            : 'Kéo thẻ này và thả vào một ngày trong Lịch trình'}
                         >
                           <div className="flex items-start gap-3 p-3">
                             {coverImageUrl ? (
@@ -640,7 +646,7 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
                                 onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
                               />
                             ) : (
-                              <div className="mt-0.5 flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                              <div className="mt-0.5 flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
                                 <MapPin className="h-5 w-5" />
                               </div>
                             )}
@@ -649,7 +655,7 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
                                 <div className="min-w-0">
                                   <p className="text-sm font-bold text-slate-900">{placeName}</p>
                                   <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                                    {place?.category && <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500">{String(place.category).replaceAll('_', ' ')}</span>}
+                                    {place?.category && <span className="text-[11px] font-semibold text-emerald-700">{String(place.category).replaceAll('_', ' ')}</span>}
                                     <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ring-1 ${trust.className}`}>
                                       <trust.Icon className="h-3 w-3" />{trustLabel}
                                     </span>
@@ -709,10 +715,10 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
                                   type="button"
                                   disabled={!targetDayId || addingPlaceId != null || tripDays.length === 0}
                                   onClick={() => handleAddRecommendation(place)}
-                                  className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl tp-ai-user px-3 py-2 text-xs font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   {isAdding ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                                  {tripDays.length ? 'Thêm vào ngày đã chọn' : 'Trip chưa có ngày để thêm'}
+                                  {tripDays.length ? 'Thêm vào ngày đã chọn' : 'Chuyến đi chưa có ngày để thêm'}
                                 </button>
                               )}
                             </div>
@@ -770,7 +776,7 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
               type="submit"
               disabled={!inputText.trim() || isLoading}
               aria-label="Gửi tin nhắn"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full tp-ai-user text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
@@ -801,7 +807,7 @@ export default function AiAssistantChat({ tripId, trip, onTripUpdated, onAddPlac
         onClick={() => setIsOpen((open) => !open)}
         aria-label={isOpen ? 'Đóng trợ lý AI' : 'Mở trợ lý AI'}
         aria-expanded={isOpen}
-        className="fixed bottom-5 right-5 z-[5001] flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-xl shadow-slate-900/25 transition hover:-translate-y-1 hover:bg-slate-700 focus:outline-none focus:ring-4 focus:ring-slate-300"
+        className={`tp-ai-launcher fixed bottom-5 right-5 z-[5001] flex h-14 w-14 items-center justify-center rounded-full text-white transition hover:-translate-y-1 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-200 ${isOpen ? 'is-open' : ''}`}
       >
         {isOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
         {!isOpen && <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-400" />}

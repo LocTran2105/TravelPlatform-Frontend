@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { Compass, Pencil, FileText } from 'lucide-react';
+import { motion } from 'motion/react';
 import SiteHeader from './site/SiteHeader';
 import FollowButton from './FollowButton';
 import FollowListModal from './FollowListModal';
@@ -201,8 +202,8 @@ const PublicProfile = () => {
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 flex flex-col md:flex-row gap-8">
         
-        <aside className="w-full md:w-[280px] shrink-0 h-fit rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-          <div className="mx-auto flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-slate-100 border border-slate-200">
+        <aside className="tp-rise w-full md:w-[280px] shrink-0 h-fit rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm md:sticky md:top-24">
+          <div className="tp-avatar-ring mx-auto flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-slate-100">
             {profileUser.avatar ? (
               <img src={profileUser.avatar} alt="Ảnh đại diện" className="h-full w-full object-cover" />
             ) : (
@@ -215,11 +216,11 @@ const PublicProfile = () => {
           <div className="flex justify-center gap-8 mb-6 border-y border-slate-100 py-4">
             <div className="cursor-pointer group" onClick={() => openFollowModal('followers')}>
               <div className="text-lg font-black group-hover:text-[#FF5645] transition-colors">{followerCount}</div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Người theo dõi</div>
+              <div className="text-[11px] font-bold text-slate-400">Người theo dõi</div>
             </div>
             <div className="cursor-pointer group" onClick={() => openFollowModal('following')}>
               <div className="text-lg font-black group-hover:text-[#FF5645] transition-colors">{followingCount}</div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Đang theo dõi</div>
+              <div className="text-[11px] font-bold text-slate-400">Đang theo dõi</div>
             </div>
           </div>
 
@@ -270,19 +271,19 @@ const PublicProfile = () => {
               onClick={() => setActiveTab('trips')}
             >
               <Compass className="h-4.5 w-4.5" /> Kế hoạch chuyến đi
-              {activeTab === 'trips' && <div className="absolute -bottom-[2px] left-0 right-0 h-[2px] bg-[#FF5645]" />}
+              {activeTab === 'trips' && <motion.div layoutId="tp-profile-tab" className="tp-tab-underline" />}
             </button>
             <button 
               className={`flex items-center gap-2 pb-3 font-bold transition-all relative ${activeTab === 'posts' ? 'text-[#FF5645]' : 'text-slate-500 hover:text-slate-800'}`}
               onClick={() => setActiveTab('posts')}
             >
               <FileText className="h-4.5 w-4.5" /> Bài viết
-              {activeTab === 'posts' && <div className="absolute -bottom-[2px] left-0 right-0 h-[2px] bg-[#FF5645]" />}
+              {activeTab === 'posts' && <motion.div layoutId="tp-profile-tab" className="tp-tab-underline" />}
             </button>
           </div>
 
           {activeTab === 'trips' ? (
-             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+             <div className="tp-card-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                 {trips.length === 0 ? (
                     <div className="col-span-full py-20 text-center">
                         <p className="text-slate-500 font-medium">Chưa có chuyến đi nào.</p>
@@ -304,7 +305,7 @@ const PublicProfile = () => {
                 )}
              </div>
           ) : (
-             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+             <div className="tp-card-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                 {postsError ? (
                     <div className="col-span-full py-20 text-center">
                         <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
@@ -312,7 +313,7 @@ const PublicProfile = () => {
                         <button
                           type="button"
                           onClick={reloadPosts}
-                          className="mt-4 rounded-full bg-slate-900 px-5 py-2 text-sm font-bold text-white hover:bg-slate-800"
+                          className="tp-btn-primary mt-4 px-5 py-2 text-sm"
                         >
                           Thử lại
                         </button>

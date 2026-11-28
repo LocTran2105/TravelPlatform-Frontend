@@ -124,7 +124,7 @@ const PendingInvitations = ({ onJoined }) => {
                 type="button"
                 onClick={() => respond(item, 'accept')}
                 disabled={busyId !== null}
-                className="rounded-full bg-[#FF5645] px-5 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#E04B3B] disabled:opacity-60"
+                className="tp-btn-primary rounded-full px-5 py-2 text-sm disabled:opacity-60"
               >
                 {busyId === item.id ? 'Đang xử lý...' : 'Tham gia'}
               </button>

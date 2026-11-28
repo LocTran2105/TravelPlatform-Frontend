@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { History, Home, LayoutDashboard, ListChecks, LogOut, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { motion } from 'motion/react';
 import axiosClient from '../api/axiosClient';
 import useAsyncData from '../utils/useAsyncData';
 import { readStoredUser, roleLabel } from '../utils/moderation';
@@ -9,9 +10,12 @@ import SiteThemeToggle from '../components/site/SiteThemeToggle';
 const STATS_REFRESH_MS = 60 * 1000;
 
 const navClass = (active) =>
-  `relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
-    active ? 'bg-red-50 text-[#FF5645]' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+  `relative isolate flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+    active ? 'text-[#E04B3B]' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
   }`;
+
+// Viên đánh dấu trượt giữa các mục (giống thanh bên trang chi tiết chuyến đi)
+const SidePill = ({ show }) => (show ? <motion.span layoutId="mod-side-pill" className="tp-side-pill" transition={{ type: 'spring', stiffness: 420, damping: 36 }} /> : null);
 
 // Khung của khu kiểm duyệt: thanh bên + nội dung. Các trang con lấy thống kê qua useOutletContext().
 export default function ModeratorLayout() {
@@ -52,9 +56,10 @@ export default function ModeratorLayout() {
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Điều hướng kiểm duyệt">
           <NavLink to="/moderation" end className={({ isActive }) => navClass(isActive)}>
-            <LayoutDashboard className="h-[18px] w-[18px] shrink-0" /> Tổng quan
+            {({ isActive }) => (<><SidePill show={isActive} /><LayoutDashboard className="h-[18px] w-[18px] shrink-0" /> Tổng quan</>)}
           </NavLink>
           <NavLink to="/moderation/queue" className={() => navClass(inQueue)}>
+            <SidePill show={inQueue} />
             <ListChecks className="h-[18px] w-[18px] shrink-0" />
             <span className="flex-1">Hàng đợi</span>
             {pending > 0 && (
@@ -62,7 +67,7 @@ export default function ModeratorLayout() {
             )}
           </NavLink>
           <NavLink to="/moderation/history" className={({ isActive }) => navClass(isActive)}>
-            <History className="h-[18px] w-[18px] shrink-0" /> Lịch sử xử lý
+            {({ isActive }) => (<><SidePill show={isActive} /><History className="h-[18px] w-[18px] shrink-0" /> Lịch sử xử lý</>)}
           </NavLink>
         </nav>
 

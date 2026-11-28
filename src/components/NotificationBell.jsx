@@ -94,7 +94,7 @@ export default function NotificationBell() {
         aria-expanded={open}
         aria-label={count > 0 ? `Thông báo, ${count} chưa đọc` : 'Thông báo'}
         title="Thông báo"
-        className="relative flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+        className="relative flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
       >
         <Bell className="h-5 w-5" />
         {count > 0 && (
@@ -119,7 +119,7 @@ export default function NotificationBell() {
               type="button"
               onClick={handleMarkAll}
               disabled={count === 0}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold text-[#E04B3B] transition hover:bg-orange-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
             >
               <CheckCheck className="h-3.5 w-3.5" />
               Đánh dấu đã đọc tất cả
@@ -129,7 +129,7 @@ export default function NotificationBell() {
           <div className="max-h-[26rem] overflow-y-auto">
             {loading && items.length === 0 && (
               <div className="flex items-center justify-center py-10" role="status" aria-label="Đang tải">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600" />
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-orange-200 border-t-[#FF5645]" />
               </div>
             )}
             {error && (
@@ -156,7 +156,7 @@ export default function NotificationBell() {
           <Link
             to="/notifications"
             onClick={() => setOpen(false)}
-            className="block border-t border-slate-100 px-4 py-2.5 text-center text-sm font-semibold text-emerald-600 transition hover:bg-emerald-50"
+            className="block border-t border-slate-100 px-4 py-2.5 text-center text-sm font-semibold text-[#E04B3B] transition hover:bg-orange-50"
           >
             Xem tất cả thông báo
           </Link>

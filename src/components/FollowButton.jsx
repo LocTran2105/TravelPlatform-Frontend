@@ -80,7 +80,7 @@ const FollowButton = ({ targetUsername, initialIsFollowing = false, isFollowingM
   const toneClass =
     tone === 'neutral'
       ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-      : 'bg-[#FF5645] text-white hover:bg-[#E04B3B] shadow-sm';
+      : 'tp-btn-primary';
 
   return (
     <div className="inline-flex flex-col items-center">

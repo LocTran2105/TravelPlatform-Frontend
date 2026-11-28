@@ -86,7 +86,7 @@ export default function PostDialog({ post, currentUser, showVisibility = false, 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-0 sm:p-6"
+      className="tp-modal fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-0 sm:p-6"
       onMouseDown={(ev) => { if (ev.target === ev.currentTarget) onClose(); }}
     >
       <div

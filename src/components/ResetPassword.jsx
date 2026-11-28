@@ -72,14 +72,14 @@ const ResetPassword = () => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-700">Mật khẩu mới</label>
+            <label className="mb-1.5 block text-xs font-semibold text-slate-700">Mật khẩu mới</label>
             <div className="relative">
               <Lock className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
               <input type={showPassword ? 'text' : 'password'} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-11 text-sm focus:border-[#FF5645] focus:bg-white focus:outline-none" />
             </div>
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase text-slate-700">Xác nhận mật khẩu</label>
+            <label className="mb-1.5 block text-xs font-semibold text-slate-700">Xác nhận mật khẩu</label>
             <div className="relative">
               <Lock className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
               <input type={showPassword ? 'text' : 'password'} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="••••••••" className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-11 text-sm focus:border-[#FF5645] focus:bg-white focus:outline-none" />

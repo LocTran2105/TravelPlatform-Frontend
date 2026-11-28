@@ -122,7 +122,7 @@ function ReportForm({ target, onClose, onReported }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4"
+      className="tp-modal fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4"
       onMouseDown={(ev) => { ev.stopPropagation(); if (ev.target === ev.currentTarget) onClose(); }}
       onClick={(ev) => ev.stopPropagation()}
     >
@@ -214,7 +214,7 @@ function ReportForm({ target, onClose, onReported }) {
               <button
                 type="submit"
                 disabled={!canSubmit}
-                className="rounded-full bg-[#FF5645] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#e64a3a] disabled:cursor-not-allowed disabled:opacity-50"
+                className="tp-btn-primary rounded-full px-6 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {submitting ? 'Đang gửi...' : 'Gửi báo cáo'}
               </button>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { motion } from 'motion/react';
 import 'leaflet/dist/leaflet.css';
 import { 
   ArrowLeft, Calendar, MapPin, Plus, 
@@ -181,11 +182,12 @@ const SidebarNavButton = ({ icon: Icon, label, active, onClick }) => (
     type="button"
     onClick={onClick}
     aria-current={active ? 'true' : undefined}
-    className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
-      active ? 'bg-red-50 text-[#FF5645]' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+    className={`relative isolate flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+      active ? 'text-[#E04B3B]' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
     }`}
   >
-    {active && <span className="absolute bottom-2 left-0 top-2 w-1 rounded-full bg-[#FF5645]" />}
+    {/* Viên đánh dấu trượt giữa các mục khi cuộn trang */}
+    {active && <motion.span layoutId="trip-side-pill" className="tp-side-pill" transition={{ type: 'spring', stiffness: 420, damping: 36 }} />}
     <Icon className="h-[18px] w-[18px] shrink-0" />
     <span className="flex-1 text-left">{label}</span>
   </button>
@@ -1443,7 +1445,7 @@ const TripDetail = () => {
   };
 
   return (
-    <div className="h-screen w-full flex bg-slate-50 font-sans overflow-hidden">
+    <div className="tp-site h-screen w-full flex !bg-slate-50 overflow-hidden">
       
       {/* 1. THANH BÊN */}
       <aside className={`${isSidebarOpen ? 'w-64' : 'w-0'} flex-shrink-0 bg-white border-r border-slate-200 transition-all duration-300 ease-in-out relative z-20 overflow-hidden`}>
@@ -1495,7 +1497,8 @@ const TripDetail = () => {
                             : isCurrent ? 'bg-red-50 font-bold text-[#FF5645]' : 'font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                           }`}
                         >
-                          <span className="truncate">
+                          <span className="flex min-w-0 items-center gap-2 truncate">
+                            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: DAY_COLORS[(trip.tripDays || []).indexOf(day) % DAY_COLORS.length] }} />
                             Ngày {day.dayNumber}{droppingDayId === day.id ? ' · đang thêm…' : ''}
                             {formatDayDate(day.dayDate) && <span className={`ml-1.5 text-[11px] font-medium ${isCurrent ? 'text-[#FF5645]/70' : 'text-slate-400'}`}>{formatDayDate(day.dayDate)}</span>}
                           </span>
@@ -1516,7 +1519,7 @@ const TripDetail = () => {
           {/* Tóm tắt nhanh */}
           <div className="border-t border-slate-100 p-3">
             <div className="rounded-2xl bg-slate-50 p-3">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Tóm tắt</p>
+              <p className="text-xs font-semibold text-slate-500">Tóm tắt</p>
               <p className="mt-1.5 text-xs font-semibold text-slate-600">
                 {(trip.tripDays || []).length} ngày · {allDestinations.length} địa điểm
               </p>
@@ -1528,7 +1531,7 @@ const TripDetail = () => {
                 <>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
                     <div
-                      className={`h-full rounded-full ${expenseStats.remaining < 0 ? 'bg-rose-500' : expenseStats.percent >= 80 ? 'bg-amber-400' : 'bg-indigo-500'}`}
+                      className={`tp-grow h-full rounded-full ${expenseStats.remaining < 0 ? 'bg-rose-500' : expenseStats.percent >= 80 ? 'bg-amber-400' : 'bg-indigo-500'}`}
                       style={{ width: `${Math.min(100, expenseStats.percent)}%` }}
                     />
                   </div>
@@ -1546,7 +1549,7 @@ const TripDetail = () => {
         {/* --- PHẦN 1: TỔNG QUAN --- */}
         <section id="section-overview" ref={(el) => { sectionRefs.current.overview = el; }} className="shrink-0 pb-12">
           <div>
-            <div className="h-[300px] w-full relative bg-slate-800">
+            <div className="tp-kenburns h-[300px] w-full relative overflow-hidden bg-slate-800">
               <TripCoverImage trip={trip} width={1600} height={600} eager labelClassName="text-2xl" />
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/30 to-transparent" />
               {canEdit && (
@@ -1560,7 +1563,7 @@ const TripDetail = () => {
               )}
             </div>
             <div className="relative -mt-16 mx-auto max-w-4xl px-4 sm:px-8">
-              <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-100 flex flex-col gap-5">
+              <div className="tp-rise bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-100 flex flex-col gap-5" style={{ animationDelay: '.15s' }}>
                 <div>
                   <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">{trip.title}</h1>
                   <div className="flex items-center text-sm font-semibold text-slate-500 gap-2"><Calendar className="w-4 h-4 text-slate-400"/> {formatFullDate(trip.startDate)} — {trip.endDate ? formatFullDate(trip.endDate) : 'Chưa có ngày kết thúc'}</div>
@@ -1575,7 +1578,7 @@ const TripDetail = () => {
                     <button
                       type="button"
                       onClick={() => setShareModalView('share')}
-                      className="flex items-center gap-1.5 rounded-full bg-[#FF5645] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#E04B3B]"
+                      className="tp-btn-primary px-4 py-2 text-sm"
                     >
                       <Share2 className="w-4 h-4" /> Chia sẻ
                     </button>
@@ -1713,7 +1716,7 @@ const TripDetail = () => {
               {canEdit && (
                 <button
                   onClick={() => openExpenseDialog()}
-                  className="flex items-center gap-2 px-5 py-3 bg-[#FF5645] text-white font-bold text-sm rounded-full hover:bg-[#E04B3B] transition-colors shadow-sm"
+                  className="tp-btn-primary px-5 py-3 text-sm"
                 >
                   <Plus className="w-4 h-4" /> Thêm chi phí
                 </button>
@@ -1730,7 +1733,7 @@ const TripDetail = () => {
               </div>
               <div className="h-2 rounded-full bg-slate-300/70 overflow-hidden mb-1.5">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${
+                  className={`tp-grow h-full rounded-full transition-all duration-500 ${
                     expenseStats.remaining < 0 ? 'bg-rose-500' : expenseStats.percent >= 80 ? 'bg-amber-400' : 'bg-indigo-500'
                   }`}
                   style={{ width: `${expenseStats.budget > 0 ? Math.min(100, expenseStats.percent) : 0}%` }}
@@ -1878,6 +1881,7 @@ const TripDetail = () => {
 
         <TripMap
           tripDays={trip.tripDays}
+          destination={trip.destination}
           activeDestination={activeDestination}
           isPanelOpen={isPanelOpen}
           setMapDayMode={setMapDayMode}
@@ -1940,7 +1944,7 @@ const TripDetail = () => {
       {/* ================= DIALOG ĐÁNH GIÁ SAU KHI "ĐÃ ĐI" ================= */}
       {visitDialog && (
         <div
-          className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
+          className="tp-modal fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4"
           onClick={closeVisitDialog}
         >
           <div
@@ -2002,7 +2006,7 @@ const TripDetail = () => {
             <button
               onClick={submitVisitReview}
               disabled={isSubmittingVisit}
-              className="w-full mt-6 py-4 bg-[#FF5645] text-white font-extrabold rounded-full hover:bg-[#E04B3B] transition-colors disabled:opacity-50"
+              className="tp-btn-primary w-full mt-6 py-4 rounded-full disabled:opacity-50"
             >
               {isSubmittingVisit ? uploadLabel : 'Lưu đánh giá'}
             </button>

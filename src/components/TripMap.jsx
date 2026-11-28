@@ -5,6 +5,7 @@ import { Navigation } from 'lucide-react';
 import { MapHoverPreview, getDestPlaceId } from './PlaceHoverPreview';
 import ResilientTileLayer from './ResilientTileLayer';
 import DirectionsPanel from './DirectionsPanel';
+import TripVehicles from './TripVehicles';
 import { DAY_COLORS } from '../utils/tripDetail';
 
 // Phần bản đồ của TripDetail (chip ngày, chỉ đường, Leaflet, cảnh báo thiếu tọa độ). Chỉ hiển thị.
@@ -45,6 +46,26 @@ function MapBounds({ points, boundsKey, activePoint, activeKey }) {
     };
   }, [boundsKey, activeKey, map]);
 
+  return null;
+}
+
+// Chưa có địa điểm nào: tìm tọa độ của điểm đến (Photon) rồi bay tới, để bản đồ không mở ra cả khu vực.
+function DestinationFocus({ destination, hasStops }) {
+  const map = useMap();
+  useEffect(() => {
+    const q = String(destination || '').trim();
+    if (hasStops || q.length < 2) return undefined;
+    const controller = new AbortController();
+    const params = new URLSearchParams({ q, limit: '1', lat: '16.047', lon: '108.206' });
+    fetch(`https://photon.komoot.io/api/?${params}`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const c = data?.features?.[0]?.geometry?.coordinates;
+        if (Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1])) map.flyTo([c[1], c[0]], 12, { duration: 1.2 });
+      })
+      .catch(() => { /* không tìm được: giữ khung nhìn mặc định */ });
+    return () => controller.abort();
+  }, [destination, hasStops, map]);
   return null;
 }
 
@@ -96,7 +117,7 @@ const getMarkerIcon = (number, isActive, color) => {
     const border = isActive ? '3px solid white' : '2px solid white';
     markerIconCache.set(key, L.divIcon({
       className: 'custom-div-icon',
-      html: `<div style="background-color: ${color}; color: white; width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: ${isActive ? '16px' : '12px'}; border: ${border}; box-shadow: ${shadow}; transition: all 0.3s ease;">${number}</div>`,
+      html: `<div class="tp-marker-pop" style="background-color: ${color}; color: white; width: ${size}px; height: ${size}px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: ${isActive ? '16px' : '12px'}; border: ${border}; box-shadow: ${shadow}; transition: all 0.3s ease;">${number}</div>`,
       iconSize: [size, size],
       iconAnchor: [size / 2, size / 2]
     }));
@@ -108,13 +129,23 @@ const TripMap = ({
   tripDays, activeDestination, isPanelOpen, setMapDayMode, mapDayMode, mapDayId, dayHasStops,
   setActiveDestination, savingOrder, directions, setDirections, openDirections, directionStops,
   isSidebarOpen, hideHover, mapStops, boundsKey, routeDays, routeData, hover, selectDestination,
-  showHover, destCovers, placeActivity, keepHover, handleDestinationClick, unmappedDestinations
+  showHover, destCovers, placeActivity, keepHover, handleDestinationClick, unmappedDestinations, destination
 }) => {
+  // Lộ trình của các ngày đang hiện trên bản đồ (nối các đoạn đường + các điểm dừng) cho xe chạy
+  const vehicleRoutes = routeDays
+    .filter(d => !mapDayId || d.id === mapDayId)
+    .map(d => ({
+      id: d.id,
+      color: d.color,
+      positions: (routeData[d.id]?.segments || []).flatMap(seg => seg.positions || []),
+      stops: d.stops.map(s => ({ lat: s.lat, lng: s.lng, name: s.dest?.placeName || 'Địa điểm' })),
+    }))
+    .filter(r => r.positions.length >= 2);
   return (
     <>
       {/* Chọn ngày hiển thị trên bản đồ (không cần cuộn danh sách) */}
       {(tripDays || []).length > 0 && !(activeDestination && isPanelOpen) && (
-        <div className="absolute left-3 top-3 z-[950] flex max-w-[calc(100%-150px)] items-center gap-1.5 overflow-x-auto rounded-2xl bg-white/95 p-1.5 shadow-lg ring-1 ring-black/5 backdrop-blur">
+        <div className="absolute left-3 top-3 z-[950] flex max-w-[calc(100%-150px)] items-center gap-1.5 overflow-x-auto rounded-2xl bg-white/95 p-1.5 shadow-lg ring-1 ring-black/5 backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {[
             { key: 'auto', label: 'Theo cuộn', title: 'Bản đồ đi theo ngày đang xem trong danh sách' },
             { key: 'all', label: 'Cả chuyến', title: 'Hiện mọi ngày, mỗi ngày một màu' },
@@ -163,6 +194,8 @@ const TripMap = ({
         <ResilientTileLayer preset="google" />
         <MapSizeObserver resizeKey={isSidebarOpen} />
         <MapBackgroundClick onClick={() => hideHover(null, { force: true })} />
+        <DestinationFocus destination={destination} hasStops={mapStops.length > 0} />
+        <TripVehicles routes={vehicleRoutes} />
         <MapBounds
           points={mapStops.map(s => [s.lat, s.lng])}
           boundsKey={boundsKey}
@@ -184,6 +217,7 @@ const TripMap = ({
               weight={4}
               opacity={0.8}
               dashArray={seg.approx ? '8 10' : undefined}
+              className={seg.approx ? undefined : 'tp-route-line'}
             />
           )))}
 

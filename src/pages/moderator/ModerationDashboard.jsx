@@ -32,7 +32,7 @@ export default function ModerationDashboard() {
 
           <div className="mt-10 flex items-center justify-between">
             <h2 className="text-xl font-extrabold text-slate-900">Theo loại nội dung</h2>
-            <Link to="/moderation/queue" className="flex items-center gap-1.5 rounded-full bg-[#FF5645] px-4 py-2 text-sm font-bold text-white hover:bg-[#E04B3B]">
+            <Link to="/moderation/queue" className="tp-btn-primary flex items-center gap-1.5 rounded-full px-4 py-2 text-sm">
               Mở hàng đợi <ArrowRight className="h-4 w-4" />
             </Link>
           </div>

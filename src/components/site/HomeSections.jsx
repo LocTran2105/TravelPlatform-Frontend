@@ -1,50 +1,63 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, useInView, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useInView, useReducedMotion } from 'motion/react';
 import { ArrowUpRight, CalendarDays, MapPin, Plus, Receipt, Search, Users } from 'lucide-react';
 import JourneyScene from './JourneyScene';
+import { JOURNEY_TOURS } from './journeyTours';
 import { greeting } from '../../utils/portalFormat';
 
 const EASE = [0.2, 0.8, 0.2, 1];
 
-/** Thẻ lịch trình nổi trên bản đồ: cho người mới thấy ngay sản phẩm làm gì. */
-function ItineraryCard() {
-  const stops = [
-    { time: '08:00', name: 'Chợ Đà Lạt', color: '#ff5645' },
-    { time: '10:30', name: 'Đồi chè Cầu Đất', color: '#7c5cf0' },
-    { time: '15:00', name: 'Langbiang', color: '#0f7d68' },
-    { time: '18:30', name: 'Hồ Xuân Hương', color: '#2f6fd6' },
-  ];
+/**
+ * Thẻ lịch trình nổi trên bản đồ: cho người mới thấy ngay sản phẩm làm gì.
+ * Đổi theo chuyến mẫu đang chạy trên bản đồ; điểm xe đã tới được tô đậm, điểm đang đứng có chấm nhấp nháy.
+ */
+function ItineraryCard({ index, reached }) {
+  const tour = JOURNEY_TOURS[index] || JOURNEY_TOURS[0];
   return (
-    <motion.div className="tp-float-card hidden w-64 p-4 lg:block" style={{ right: '5%', bottom: '9%' }}
+    <motion.div className="tp-float-card hidden w-64 overflow-hidden p-4 lg:block" style={{ right: '5%', bottom: '9%' }}
       initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.2, duration: 0.6, ease: EASE }}>
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-bold text-slate-900">Ngày 1, Đà Lạt</p>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">4 điểm</span>
-      </div>
-      <ol className="relative mt-3 space-y-2.5 before:absolute before:bottom-1.5 before:left-[5px] before:top-1.5 before:w-px before:bg-slate-200">
-        {stops.map((s, i) => (
-          <motion.li key={s.name} className="relative flex items-center gap-3 text-sm"
-            initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.5 + i * 0.15, ease: EASE }}>
-            <span className="relative z-10 h-[11px] w-[11px] rounded-full ring-2 ring-white" style={{ background: s.color }} />
-            <span className="w-11 font-semibold tabular-nums text-slate-500">{s.time}</span>
-            <span className="truncate font-medium text-slate-800">{s.name}</span>
-          </motion.li>
-        ))}
-      </ol>
-      <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs">
-        <span className="flex items-center gap-1.5 text-slate-500"><Users className="h-3.5 w-3.5" /> 4 người đi cùng</span>
-        <span className="font-semibold tabular-nums text-slate-800">312.500 ₫/người</span>
-      </div>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div key={tour.id}
+          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.35, ease: EASE }}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-bold text-slate-900">Ngày {tour.day}, {tour.city}</p>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{tour.stops.length} điểm</span>
+          </div>
+          <ol className="relative mt-3 space-y-2.5 before:absolute before:bottom-1.5 before:left-[5px] before:top-1.5 before:w-px before:bg-slate-200">
+            {tour.stops.map((s, i) => {
+              const done = reached >= i;
+              const here = reached === i;
+              return (
+                <motion.li key={s.name} className="relative flex items-center gap-3 text-sm"
+                  initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + i * 0.08, ease: EASE }}>
+                  <span className="relative z-10 h-[11px] w-[11px] rounded-full ring-2 ring-white transition-transform duration-300"
+                    style={{ background: done ? s.color : 'transparent', boxShadow: done ? 'none' : `inset 0 0 0 2px ${s.color}`, transform: here ? 'scale(1.35)' : 'none' }}>
+                    {here && <span className="tp-card-here absolute inset-0 rounded-full" style={{ background: s.color }} />}
+                  </span>
+                  <span className="w-11 font-semibold tabular-nums text-slate-500">{s.time}</span>
+                  <span className={`truncate transition-colors duration-300 ${done ? 'font-semibold text-slate-900' : 'font-medium text-slate-400'}`}>{s.name}</span>
+                </motion.li>
+              );
+            })}
+          </ol>
+          <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs">
+            <span className="flex items-center gap-1.5 text-slate-500"><Users className="h-3.5 w-3.5" /> {tour.people} người đi cùng</span>
+            <span className="font-semibold tabular-nums text-slate-800">{tour.cost}/người</span>
+          </div>
+        </motion.div>
+      </AnimatePresence>
     </motion.div>
   );
 }
 
 /** Hero cho khách chưa đăng nhập: chữ bên trái, bản đồ hành trình sống phía sau. */
 export function HomeHero() {
+  // Chuyến mẫu đang chạy trên bản đồ + điểm xe đã tới, để thẻ lịch trình đổi theo
+  const [progress, setProgress] = useState({ index: 0, reached: 0 });
   return (
     <section className="relative">
-      <JourneyScene className="tp-hero-scene lg:min-h-[600px]">
+      <JourneyScene className="tp-hero-scene lg:min-h-[600px]" onTourProgress={setProgress}>
         {/* Lớp sương trắng giữ chữ dễ đọc: từ trên xuống trên điện thoại, từ trái sang trên màn rộng */}
         <div className="tp-hero-fog pointer-events-none absolute inset-0 z-[2]" />
         <div className="relative z-[5] mx-auto flex max-w-7xl px-4 pb-[350px] pt-12 sm:px-6 lg:min-h-[600px] lg:items-center lg:px-8 lg:py-20">
@@ -68,7 +81,7 @@ export function HomeHero() {
             </motion.div>
           </div>
         </div>
-        <ItineraryCard />
+        <ItineraryCard index={progress.index} reached={progress.reached} />
       </JourneyScene>
     </section>
   );

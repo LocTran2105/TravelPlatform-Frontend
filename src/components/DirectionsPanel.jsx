@@ -33,7 +33,7 @@ function StopSelect({ label, value, onChange, stops, allowCurrent, excludeIds = 
 
   return (
     <label className="block">
-      <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="mb-1 block text-[11px] font-bold text-slate-400">{label}</span>
       <select
         value={value ?? ''}
         onChange={(event) => onChange(event.target.value === CURRENT_LOCATION
@@ -198,7 +198,7 @@ export default function DirectionsPanel({ stops, value, onChange, onClose }) {
           rel="noopener noreferrer"
           aria-disabled={!ready}
           onClick={(event) => { if (!ready) event.preventDefault(); }}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-bold text-white transition ${ready ? 'bg-[#FF5645] hover:bg-[#E04B3B]' : 'cursor-not-allowed bg-slate-300'}`}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-bold transition ${ready ? 'tp-btn-primary' : 'cursor-not-allowed bg-slate-300 text-white'}`}
         >
           <ExternalLink className="h-4 w-4" /> Mở Google Maps
         </a>

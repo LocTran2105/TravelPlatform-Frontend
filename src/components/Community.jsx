@@ -343,7 +343,7 @@ const EditPostModal = ({ post, onClose, onSaved }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4"
+      className="tp-modal fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4"
       onMouseDown={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}
     >
       <div

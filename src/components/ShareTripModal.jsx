@@ -462,7 +462,7 @@ const ShareTripModal = ({ trip, onClose, onChanged, initialView = 'share' }) => 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      className="tp-modal fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
       onClick={onClose}
       role="presentation"
     >
@@ -541,7 +541,7 @@ const ShareTripModal = ({ trip, onClose, onChanged, initialView = 'share' }) => 
                 type="button"
                 onClick={handleCopy}
                 disabled={!shareUrl}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#FF5645] px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-[#E04B3B] disabled:opacity-50"
+                className="tp-btn-primary flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm disabled:opacity-50"
               >
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 {copied ? 'Đã sao chép' : 'Sao chép link'}
@@ -775,7 +775,7 @@ const ShareTripModal = ({ trip, onClose, onChanged, initialView = 'share' }) => 
 
                 {invitations.length > 0 && (
                   <div className="mt-5">
-                    <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">Lời mời đang chờ</h3>
+                    <h3 className="text-xs font-bold text-slate-400">Lời mời đang chờ</h3>
                     <ul className="mt-1 divide-y divide-slate-100">
                       {invitations.map((inv) => (
                         <li key={inv.id} className="flex items-center gap-3 py-2.5">

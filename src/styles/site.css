@@ -40,6 +40,7 @@
   --tp-cloud: #ffffff; --tp-cloud-opacity: .92;
   --tp-label-bg: #ffffff; --tp-label-line: #e6e9e7; --tp-label-ink: #1c2421; --tp-pin-stroke: #ffffff;
   --tp-headlight: #fff4c2; --tp-beam-opacity: 0;
+  --tp-grass: rgba(132, 196, 108, .3); --tp-grass-tuft: #6aa957; --tp-ripple: rgba(255, 255, 255, .85);
 }
 
 /* Giao diện tối: bản đồ ban đêm, xe bật đèn pha */
@@ -65,6 +66,7 @@
   --tp-cloud: #c9d4e0; --tp-cloud-opacity: .16;
   --tp-label-bg: #1e2925; --tp-label-line: #33403b; --tp-label-ink: #e8eeea; --tp-pin-stroke: #0f1614;
   --tp-headlight: #fff1a8; --tp-beam-opacity: .55;
+  --tp-grass: rgba(70, 130, 80, .22); --tp-grass-tuft: #3f7a4a; --tp-ripple: rgba(160, 210, 235, .45);
 }
 
 .tp-site {
@@ -74,6 +76,16 @@
 }
 
 .tp-site h1, .tp-site h2, .tp-site h3 { letter-spacing: -0.02em; }
+
+/* Mọi trang du khách (kể cả hộp thoại gắn thẳng vào body, trang chia sẻ/lời mời, khu kiểm duyệt) dùng chung phông chữ */
+:root[data-site-theme] { --font-sans: 'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', sans-serif; } /* lớp font-sans của Tailwind */
+:root[data-site-theme] body { font-family: 'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+
+/* ---------- Hộp thoại: nền mờ dần + làm nhòe phía sau, khung nổi lên ---------- */
+.tp-modal { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: tp-modal-fade .2s ease-out both; }
+.tp-modal > :not(button) { animation: tp-modal-in .32s cubic-bezier(.2, .9, .25, 1.05) both; }
+@keyframes tp-modal-fade { from { opacity: 0; } }
+@keyframes tp-modal-in { from { opacity: 0; transform: translateY(14px) scale(.97); } }
 .tp-site :focus-visible { outline: 2px solid var(--tp-coral); outline-offset: 2px; }
 
 @keyframes tp-shift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
@@ -208,6 +220,19 @@
 @keyframes tp-pin-ring { 0% { transform: scale(.4); opacity: .7; } 100% { transform: scale(2.4); opacity: 0; } }
 .tp-pin-drop { transform-box: fill-box; transform-origin: 50% 100%; animation: tp-pin-drop .7s cubic-bezier(.3, 1.5, .5, 1) both; }
 @keyframes tp-pin-drop { from { transform: translateY(-26px) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Lịch trình mẫu đổi lần lượt (JourneyTourLayer) */
+.tp-tour { animation: tp-tour-in .5s ease-out both; }
+.tp-tour-leave { opacity: 0; transition: opacity .7s ease; }
+@keyframes tp-tour-in { from { opacity: 0; } }
+.tp-pin-hop { transform-box: fill-box; transform-origin: 50% 100%; animation: tp-pin-hop .75s cubic-bezier(.3, 1.4, .5, 1); }
+@keyframes tp-pin-hop { 0% { transform: none; } 30% { transform: translateY(-14px) scale(1.08); } 55% { transform: translateY(0) scaleY(.85) scaleX(1.1); } 75% { transform: translateY(-4px); } 100% { transform: none; } }
+.tp-label-pop { transform-box: fill-box; animation: tp-label-pop .45s .12s cubic-bezier(.2, .9, .3, 1.2) both; }
+@keyframes tp-label-pop { from { opacity: 0; transform: scale(.6); } }
+.tp-card-here { animation: tp-card-here 1.6s ease-out infinite; }
+@keyframes tp-card-here { from { transform: scale(1); opacity: .6; } to { transform: scale(2.6); opacity: 0; } }
+.tp-ripple { animation: tp-ripple 3.2s ease-in-out infinite; }
+@keyframes tp-ripple { 0%, 100% { opacity: .15; transform: translateX(-3px); } 50% { opacity: 1; transform: translateX(3px); } }
 
 .tp-route-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: tp-route-draw 2.4s .4s cubic-bezier(.6, 0, .3, 1) forwards; }
 @keyframes tp-route-draw { to { stroke-dashoffset: 0; } }
@@ -396,7 +421,129 @@
 .tp-post:hover { box-shadow: 0 22px 44px -30px rgba(28, 36, 33, .55); }
 .tp-burst { position: absolute; left: 50%; top: 50%; pointer-events: none; color: #f43f5e; }
 
+
+/* =====================================================================
+   CHI TIẾT CHUYẾN ĐI (TripDetail / TripMap / ItineraryDay)
+   ===================================================================== */
+/* Xe chạy theo lộ trình trên bản đồ Leaflet */
+.tp-vehicle-icon { background: none; border: 0; }
+.tp-vehicle, .tp-vehicle-body { width: 100%; height: 100%; }
+.tp-vehicle-body { filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .35)); will-change: transform; }
+.tp-vehicle-body svg { display: block; }
+/* Xe máy hơi rung khi đang chạy */
+.tp-vehicle-icon.is-moving .tp-vehicle[data-type="motorbike"] svg { animation: tp-bike-sway .5s ease-in-out infinite alternate; }
+@keyframes tp-bike-sway { from { transform: translateY(-.6px); } to { transform: translateY(.6px); } }
+
+/* Tới một điểm: vòng sóng lan ra, ghim nảy xuống kèm tên điểm, rồi cả cụm tan dần (3s, khớp PING_MS) */
+.tp-ping-icon { background: none; border: 0; pointer-events: none; }
+.tp-ping { position: absolute; left: 0; top: 0; animation: tp-ping-out 3s linear forwards; }
+.tp-ping-ring { position: absolute; left: -18px; top: -18px; width: 36px; height: 36px; border-radius: 50%; border: 2.5px solid var(--c); animation: tp-ping-ring 1.1s ease-out 2 both; }
+.tp-ping-pin { position: absolute; left: -11px; top: -46px; transform-origin: 50% 100%; filter: drop-shadow(0 4px 4px rgba(0, 0, 0, .3)); animation: tp-ping-bounce .9s cubic-bezier(.3, 1.4, .5, 1) both; }
+.tp-ping-pin svg { display: block; }
+.tp-ping-label {
+  position: absolute; left: 50%; top: -76px; transform: translateX(-50%);
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 4px 10px; border-radius: 999px; background: rgb(var(--tp-surface-rgb, 255 255 255) / .96); color: var(--tp-ink, #17231F);
+  font: 600 12px/1.3 'Be Vietnam Pro', system-ui, sans-serif; box-shadow: 0 6px 16px rgba(0, 0, 0, .18); border: 1.5px solid var(--c);
+  animation: tp-ping-label .5s .25s cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes tp-ping-ring { from { transform: scale(.3); opacity: .9; } to { transform: scale(2.2); opacity: 0; } }
+@keyframes tp-ping-bounce {
+  0% { transform: translateY(-28px) scale(.6); opacity: 0; }
+  45% { transform: translateY(0) scaleY(.82) scaleX(1.12); opacity: 1; }
+  65% { transform: translateY(-8px) scale(1); }
+  82% { transform: translateY(0) scaleY(.94) scaleX(1.04); }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes tp-ping-label { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes tp-ping-out { 0%, 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
+
+/* Máy bay bay ngang khung bản đồ (TripVehicles Flyover) */
+.tp-flyover { position: absolute; inset: 0; z-index: 620; pointer-events: none; overflow: visible; }
+.tp-flyover-plane path { fill: #E8362B; stroke: #fff; stroke-width: 1; stroke-linejoin: round; }
+.tp-flyover-shadow path { fill: rgba(0, 0, 0, .22); filter: blur(2px); }
+.tp-flyover-trail {
+  fill: none; stroke: rgba(255, 255, 255, .9); stroke-width: 3; stroke-linecap: round;
+  stroke-dasharray: 1; stroke-dashoffset: 1; filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, .35));
+  animation: tp-trail-draw 9s cubic-bezier(.35, 0, .65, 1) forwards, tp-trail-fade 10.5s linear forwards;
+}
+@keyframes tp-trail-draw { to { stroke-dashoffset: 0; } }
+@keyframes tp-trail-fade { 0%, 45% { opacity: .85; } 100% { opacity: 0; } }
+
+/* Ghim địa điểm bật lên khi xuất hiện */
+.tp-marker-pop { animation: tp-marker-pop .45s cubic-bezier(.3, 1.6, .5, 1) both; }
+@keyframes tp-marker-pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* Đường đi tự vẽ ra; xong thì bỏ nét đứt để đường dài vẫn hiện đủ khi phóng to */
+.leaflet-container path.tp-route-line { stroke-dasharray: 4000; stroke-dashoffset: 4000; animation: tp-route-in 1.6s ease-out forwards; }
+@keyframes tp-route-in { 99% { stroke-dasharray: 4000; stroke-dashoffset: 0; } 100% { stroke-dasharray: none; stroke-dashoffset: 0; } }
+
+/* Ảnh bìa lùi nhẹ khi mở trang, thẻ tiêu đề nổi lên */
+.tp-kenburns img { animation: tp-kenburns 2.2s cubic-bezier(.2, .7, .2, 1) both; }
+@keyframes tp-kenburns { from { transform: scale(1.1); } to { transform: scale(1); } }
+.tp-rise { animation: tp-rise .6s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes tp-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+
+/* Thanh tiến độ chạy dần từ trái sang */
+.tp-grow { transform-origin: left center; animation: tp-grow 1s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes tp-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Thẻ ngày: màu nhấn theo màu của ngày trên bản đồ (--day) */
+.tp-day-card[data-focused='true'] { border-color: var(--day); box-shadow: 0 0 0 4px color-mix(in srgb, var(--day) 14%, transparent), 0 18px 40px -30px rgba(28, 36, 33, .5); }
+.tp-day-badge {
+  display: inline-flex; align-items: center; gap: .45rem; padding: .3rem .75rem; border-radius: 999px;
+  font-size: .8rem; font-weight: 800; color: var(--tp-ink);
+  background: color-mix(in srgb, var(--day) 12%, transparent); border: 1px solid color-mix(in srgb, var(--day) 35%, transparent);
+}
+.tp-day-badge::before { content: ''; width: .5rem; height: .5rem; border-radius: 50%; background: var(--day); box-shadow: 0 0 0 3px color-mix(in srgb, var(--day) 25%, transparent); }
+.tp-stop-number { background: var(--day); box-shadow: 0 4px 10px -4px var(--day); }
+.tp-stop-line { border-left: 2px dashed color-mix(in srgb, var(--day) 45%, transparent); }
+.tp-stop-row { animation: tp-rise .5s cubic-bezier(.2, .8, .2, 1) both; }
+
+/* Viên trượt đánh dấu mục đang xem ở thanh bên */
+.tp-side-pill { position: absolute; inset: 0; z-index: -1; border-radius: .75rem; background: color-mix(in srgb, #ff5645 10%, transparent); }
+.tp-side-pill::before { content: ''; position: absolute; left: 0; top: .5rem; bottom: .5rem; width: 4px; border-radius: 999px; background: var(--tp-sunset); background-size: 100% 300%; }
+
+/* ---------- Trang cá nhân: viền ảnh đại diện màu hoàng hôn, gạch chân tab trượt, thẻ hiện dần ---------- */
+.tp-avatar-ring { position: relative; box-shadow: 0 0 0 4px var(--tp-surface), 0 0 0 7px transparent; }
+.tp-avatar-ring::after {
+  content: ''; position: absolute; inset: -7px; border-radius: 999px; padding: 3px; pointer-events: none;
+  background: conic-gradient(from var(--tp-ring-a, 0deg), #ff5645, #ffa53b, #7c5cf0, #2f6fd6, #0f7d68, #ff5645);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: tp-ring-spin 8s linear infinite;
+}
+.tp-avatar-ring { overflow: visible !important; }
+.tp-avatar-ring > img { border-radius: 999px; }
+@keyframes tp-ring-spin { to { --tp-ring-a: 360deg; } }
+.tp-tab-underline { position: absolute; left: 0; right: 0; bottom: -2px; height: 3px; border-radius: 999px; background: var(--tp-sunset); background-size: 220% 100%; animation: tp-shift 6s ease infinite; }
+/* fill backwards: hết hiệu ứng thì trả transform cho :hover */
+.tp-card-grid > * { animation: tp-rise .5s cubic-bezier(.2, .8, .2, 1) backwards; transition: transform .25s ease, box-shadow .25s ease; }
+.tp-card-grid > *:hover { transform: translateY(-4px); box-shadow: 0 22px 40px -26px rgba(28, 36, 33, .45); }
+.tp-card-grid > :nth-child(2) { animation-delay: .06s; } .tp-card-grid > :nth-child(3) { animation-delay: .12s; } .tp-card-grid > :nth-child(n+4) { animation-delay: .18s; }
+
+/* ---------- Trang thông báo ---------- */
+.tp-bell-badge { display: inline-flex; width: 2.25rem; height: 2.25rem; align-items: center; justify-content: center; border-radius: 999px; color: var(--tp-on-sunset); background: var(--tp-sunset); background-size: 220% 220%; animation: tp-shift 7s ease infinite; }
+.tp-bell-badge svg { transform-origin: 50% 10%; animation: tp-bell-swing 4s ease-in-out infinite; }
+.tp-bell-ring { transform-origin: 50% 10%; animation: tp-bell-swing 3s ease-in-out infinite; }
+@keyframes tp-bell-swing { 0%, 70%, 100% { transform: rotate(0); } 76% { transform: rotate(14deg); } 82% { transform: rotate(-12deg); } 88% { transform: rotate(8deg); } 94% { transform: rotate(-4deg); } }
+.tp-notif-list > li { animation: tp-rise .45s cubic-bezier(.2, .8, .2, 1) both; }
+.tp-notif-list > li:nth-child(2) { animation-delay: .04s; } .tp-notif-list > li:nth-child(3) { animation-delay: .08s; }
+.tp-notif-list > li:nth-child(4) { animation-delay: .12s; } .tp-notif-list > li:nth-child(n+5) { animation-delay: .16s; }
+
+/* ---------- Trợ lý AI: xanh rừng thông, nút mở màu hoàng hôn ---------- */
+.tp-ai-header { background: linear-gradient(115deg, #0b4f43, #0f7d68 45%, #2f6fd6 120%); background-size: 180% 100%; animation: tp-shift 14s ease infinite; }
+.tp-ai-user { background: linear-gradient(135deg, #0f7d68, #0b5f50); }
+.tp-ai-window { animation: tp-ai-open .32s cubic-bezier(.2, .9, .25, 1.05) both; transform-origin: 100% 100%; }
+@keyframes tp-ai-open { from { opacity: 0; transform: translateY(16px) scale(.96); } }
+.tp-ai-launcher { background: var(--tp-sunset); background-size: 220% 220%; animation: tp-shift 7s ease infinite; color: var(--tp-on-sunset); box-shadow: 0 14px 30px -12px rgba(255, 86, 69, .8); }
+.tp-ai-launcher::before { content: ''; position: absolute; inset: 0; border-radius: inherit; border: 2px solid #ff7a59; animation: tp-ai-wave 2.8s ease-out infinite; pointer-events: none; }
+.tp-ai-launcher.is-open { background: #1c2421; color: #fff; }
+.tp-ai-launcher.is-open::before { display: none; }
+@keyframes tp-ai-wave { 0% { transform: scale(1); opacity: .7; } 70%, 100% { transform: scale(1.55); opacity: 0; } }
+
 @media (prefers-reduced-motion: reduce) {
+  /* cả trang du khách, gồm hộp thoại gắn ngoài .tp-site */
+  :root[data-site-theme] *, :root[data-site-theme] *::before, :root[data-site-theme] *::after,
   .tp-site *, .tp-site *::before, .tp-site *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   .tp-flight { display: none; }
 }
@@ -404,3 +551,7 @@
 .tp-drawer a.tp-btn-primary, .tp-drawer a.tp-btn-primary:hover { color: var(--tp-on-sunset); background: var(--tp-sunset); background-size: 220% 220%; }
 
 } /* @layer components */
+
+/* @property phải nằm ngoài @layer */
+@property --tp-ring-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+

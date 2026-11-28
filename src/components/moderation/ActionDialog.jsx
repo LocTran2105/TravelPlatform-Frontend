@@ -83,7 +83,7 @@ function DialogBody({ action, onConfirm, onClose }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4"
+      className="tp-modal fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4"
       onMouseDown={(e) => { if (e.target === e.currentTarget && !busyRef.current) onClose(); }}
     >
       <div role="dialog" aria-modal="true" aria-labelledby="mod-action-title" className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">

@@ -150,7 +150,7 @@ const ReviewMediaGrid = ({ media, alt = 'Ảnh đánh giá' }) => {
       {/* Dùng portal vì panel cha có transform, nếu không thì "fixed" sẽ chỉ phủ trong panel thay vì cả màn hình */}
       {current && createPortal(
         <div
-          className="fixed inset-0 z-[4000] bg-black/90 flex items-center justify-center p-4"
+          className="tp-modal fixed inset-0 z-[4000] bg-black/90 flex items-center justify-center p-4"
           onClick={closeViewer}
         >
           <button
@@ -359,7 +359,7 @@ const PlaceInfoPanel = ({
                   <div className="animate-pulse space-y-3"><div className="h-4 bg-slate-200 rounded w-3/4"></div><div className="h-4 bg-slate-200 rounded w-full"></div></div>
                 ) : wikiText && (
                   <div className="space-y-1.5">
-                    {profile && <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Từ Wikipedia</p>}
+                    {profile && <p className="text-xs font-bold text-slate-400">Từ Wikipedia</p>}
                     <p className="text-slate-600 text-[15px] leading-relaxed font-medium">{wikiText}</p>
                   </div>
                 )}

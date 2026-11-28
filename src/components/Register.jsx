@@ -148,7 +148,7 @@ const Register = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Họ và tên */}
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                 Họ và tên
               </label>
               <div className="relative">
@@ -169,7 +169,7 @@ const Register = () => {
 
             {/* Số điện thoại */}
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                 Số điện thoại
               </label>
               <div className="relative">
@@ -190,7 +190,7 @@ const Register = () => {
 
             {/* Email */}
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                 Email
               </label>
               <div className="relative">
@@ -212,7 +212,7 @@ const Register = () => {
             {/* Mật khẩu & Xác nhận (Lưới 2 cột) */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                   Mật khẩu
                 </label>
                 <div className="relative">
@@ -231,7 +231,7 @@ const Register = () => {
                 </div>
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                   Xác nhận MK
                 </label>
                 <div className="relative">

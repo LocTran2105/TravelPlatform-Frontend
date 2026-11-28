@@ -44,7 +44,7 @@ function TripCardMenu({ anchor, current, busy, onClose, onPickVisibility, onDele
       style={{ position: 'fixed', top, left, width: MENU_WIDTH, maxHeight: window.innerHeight - 16 }}
       className="z-[2500] overflow-y-auto rounded-xl border border-slate-100 bg-white py-1.5 shadow-xl"
     >
-      <p className="px-3.5 pb-1 pt-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Ai được xem chuyến đi này</p>
+      <p className="px-3.5 pb-1 pt-1.5 text-[11px] font-bold text-slate-400">Ai được xem chuyến đi này</p>
       {VISIBILITY_OPTIONS.map(({ value, label, desc, Icon }) => {
         const selected = value === current;
         return (

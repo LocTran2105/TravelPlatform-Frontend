@@ -59,7 +59,7 @@ const FollowListModal = ({ isOpen, onClose, title, type, list, currentUser, prof
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+    <div className="tp-modal fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="w-full max-w-[400px] rounded-2xl bg-white shadow-2xl flex flex-col h-[60vh] max-h-[500px] overflow-hidden">
         
         {/* Header */}

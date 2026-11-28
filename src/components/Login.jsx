@@ -304,7 +304,7 @@ const Login = () => {
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-200" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
+            <div className="relative flex justify-center text-xs">
               <span className="bg-white px-3 font-medium tracking-wider text-slate-400">
                 Hoặc bằng tài khoản
               </span>
@@ -314,7 +314,7 @@ const Login = () => {
           {/* Form nhập Email & Mật khẩu */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
                 Địa chỉ Email
               </label>
               <div className="relative">
@@ -338,7 +338,7 @@ const Login = () => {
 
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                <label className="block text-xs font-semibold text-slate-700">
                   Mật khẩu
                 </label>
                 <button
@@ -439,7 +439,7 @@ const Login = () => {
 
       {/* ================= MODAL QUÊN MẬT KHẨU ================= */}
       {showForgotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+        <div className="tp-modal fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
           <div className="relative w-full max-w-md rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl sm:p-8">
             <button
               onClick={() => {
@@ -491,7 +491,7 @@ const Login = () => {
                   </p>
                 )}
                 <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase text-slate-700">
+                  <label className="mb-1 block text-xs font-semibold text-slate-700">
                     Email của bạn
                   </label>
                   <div className="relative">

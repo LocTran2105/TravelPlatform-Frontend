@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck } from 'lucide-react';
+import { motion } from 'motion/react';
 import NotificationItem from '../components/NotificationItem';
 import notificationsApi from '../api/notificationsApi';
 import { safeInternalLink } from '../utils/notificationText';
@@ -127,40 +128,40 @@ export default function Notifications() {
     }
   };
 
-  const tabClass = (active) =>
-    `rounded-full px-4 py-1.5 text-sm font-semibold transition ${
-      active ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
-    }`;
+  // Viên màu hoàng hôn trượt giữa hai tab, giống bảng tin Cộng đồng
+  const tabPill = (active) => active && (
+    <motion.span layoutId="tp-notif-tab" className="tp-feed-tab-pill" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
+  );
 
   if (!loggedIn) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="tp-site min-h-screen !bg-slate-50">
       <SiteHeader search={false} user={user} />
 
       <main className="mx-auto max-w-3xl px-4 py-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900">
-            <Bell className="h-5 w-5 text-emerald-600" />
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
+            <span className="tp-bell-badge"><Bell className="h-5 w-5" /></span>
             Thông báo
           </h1>
           <button
             type="button"
             onClick={handleMarkAll}
             disabled={unread === 0}
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-emerald-600 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-[#E04B3B] transition hover:bg-orange-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
           >
             <CheckCheck className="h-4 w-4" />
             Đánh dấu đã đọc tất cả
           </button>
         </div>
 
-        <div className="mb-4 flex gap-2" role="tablist" aria-label="Lọc thông báo">
-          <button type="button" role="tab" aria-selected={filter === 'all'} onClick={() => setFilter('all')} className={tabClass(filter === 'all')}>
-            Tất cả
+        <div className="tp-feed-tabs mb-4" role="tablist" aria-label="Lọc thông báo">
+          <button type="button" role="tab" aria-selected={filter === 'all'} onClick={() => setFilter('all')} className="tp-feed-tab">
+            {tabPill(filter === 'all')}Tất cả
           </button>
-          <button type="button" role="tab" aria-selected={filter === 'unread'} onClick={() => setFilter('unread')} className={tabClass(filter === 'unread')}>
-            Chưa đọc{unread > 0 ? ` (${unread})` : ''}
+          <button type="button" role="tab" aria-selected={filter === 'unread'} onClick={() => setFilter('unread')} className="tp-feed-tab">
+            {tabPill(filter === 'unread')}Chưa đọc{unread > 0 ? ` (${unread})` : ''}
           </button>
         </div>
 
@@ -174,17 +175,17 @@ export default function Notifications() {
         <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
           {loading ? (
             <div className="flex items-center justify-center py-16" role="status" aria-label="Đang tải">
-              <div className="h-7 w-7 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600" />
+              <div className="h-7 w-7 animate-spin rounded-full border-2 border-orange-200 border-t-[#FF5645]" />
             </div>
           ) : items.length === 0 ? (
             <div className="px-4 py-16 text-center">
-              <Bell className="mx-auto h-10 w-10 text-slate-300" />
+              <Bell className="tp-bell-ring mx-auto h-10 w-10 text-slate-300" />
               <p className="mt-3 text-sm text-slate-500">
                 {filter === 'unread' ? 'Bạn đã đọc hết thông báo.' : 'Bạn chưa có thông báo nào.'}
               </p>
             </div>
           ) : (
-            <ul className="divide-y divide-slate-50">
+            <ul className="tp-notif-list divide-y divide-slate-100">
               {items.map((item) => (
                 <NotificationItem key={item.id} item={item} onOpen={handleOpen} onRemove={handleRemove} />
               ))}
@@ -198,7 +199,7 @@ export default function Notifications() {
               type="button"
               onClick={loadMore}
               disabled={loadingMore}
-              className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-emerald-600 ring-1 ring-emerald-200 transition hover:bg-emerald-50 disabled:opacity-60"
+              className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#E04B3B] ring-1 ring-orange-200 transition hover:bg-orange-50 disabled:opacity-60"
             >
               {loadingMore ? 'Đang tải…' : 'Tải thêm'}
             </button>
