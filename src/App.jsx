@@ -55,6 +55,8 @@ import ModerationDetail from './pages/moderator/ModerationDetail';
 import ModerationHistory from './pages/moderator/ModerationHistory';
 
 import AdminModerators from './pages/admin/AdminModerators';
+import AdminRecruitments from './pages/admin/AdminRecruitments';
+import { RecruitmentListPage, RecruitmentDetailPage } from './pages/ModeratorRecruitment';
 
 function App() {
   // Kiểm tra JWT và đồng bộ vai trò (cấp/thu hồi quyền) khi mở ứng dụng
@@ -94,6 +96,10 @@ function App() {
 
         {/* Thông báo (trang tự chuyển về /login nếu chưa đăng nhập) */}
         <Route path="/notifications" element={<Notifications />} />
+
+        {/* Tuyển kiểm duyệt viên: ai cũng xem được, nộp đơn cần đăng nhập */}
+        <Route path="/tuyen-kiem-duyet-vien" element={<RecruitmentListPage />} />
+        <Route path="/tuyen-kiem-duyet-vien/:id" element={<RecruitmentDetailPage />} />
 
 
         {/* ================= PARTNER APPLICATION ================= */}
@@ -163,6 +169,11 @@ function App() {
           <Route
             path="/admin/moderators"
             element={<AdminModerators />}
+          />
+
+          <Route
+            path="/admin/recruitments"
+            element={<AdminRecruitments />}
           />
         </Route>
 

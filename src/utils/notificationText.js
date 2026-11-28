@@ -55,6 +55,24 @@ export function describeNotification(item) {
         detail: reason ? `“${reason}”` : '',
       };
     }
+    case 'MODERATOR_RECRUITMENT':
+      return {
+        icon: 'recruit', tone: 'amber', name: '',
+        text: 'Đang tuyển kiểm duyệt viên! Xem chi tiết và ứng tuyển ngay.',
+        detail: reason,
+      };
+    case 'MODERATOR_APPROVED':
+      return {
+        icon: 'restored', tone: 'emerald', name: '',
+        text: 'Chúc mừng! Đơn ứng tuyển của bạn đã được duyệt, bạn đã trở thành kiểm duyệt viên.',
+        detail: reason ? `Ghi chú: ${reason}` : '',
+      };
+    case 'MODERATOR_REJECTED':
+      return {
+        icon: 'report', tone: 'slate', name: '',
+        text: 'Đơn ứng tuyển kiểm duyệt viên của bạn chưa được chấp nhận.',
+        detail: reason ? `Lý do: ${reason}` : '',
+      };
     case 'CONTENT_HIDDEN':
       return {
         icon: 'hidden', tone: 'amber', name: '',

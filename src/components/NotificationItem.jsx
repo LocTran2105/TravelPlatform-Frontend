@@ -1,5 +1,5 @@
 import {
-  Bell, Copy, CornerDownRight, EyeOff, Heart, MessageCircle, RotateCcw, ShieldCheck, UserPlus, X,
+  Bell, Copy, CornerDownRight, EyeOff, Heart, Megaphone, MessageCircle, RotateCcw, ShieldCheck, UserPlus, X,
 } from 'lucide-react';
 import { describeNotification, timeAgo } from '../utils/notificationText';
 
@@ -12,6 +12,7 @@ const ICONS = {
   restored: RotateCcw,
   report: ShieldCheck,
   copy: Copy,
+  recruit: Megaphone,
 };
 
 const TONES = {

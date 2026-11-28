@@ -7,6 +7,7 @@ import SiteHeader from './site/SiteHeader';
 import TakeoffPlane from './site/TakeoffPlane';
 import { HomeGreeting, HomeHero, JourneySteps, SiteFooter } from './site/HomeSections';
 import PendingInvitations from './PendingInvitations';
+import RecruitmentBanner from './RecruitmentBanner';
 import TripCard from './TripCard';
 import HomePlaceMap from './HomePlaceMap';
 import useTripActions from './useTripActions';
@@ -106,6 +107,9 @@ const Home = () => {
           <section className="mx-auto max-w-7xl px-4 pt-8 pb-6 sm:px-6 lg:px-8">
             {/* Lời mời tham gia chuyến đi (chỉ hiện khi có) */}
             <PendingInvitations onJoined={fetchMyTrips} />
+
+            {/* Bài tuyển kiểm duyệt viên được quản trị viên ưu tiên (chỉ hiện khi có) */}
+            <RecruitmentBanner className="mb-6" />
 
             <HomeGreeting user={user} trips={myTrips} loading={loadingTrips} onExplore={scrollToMap} />
 

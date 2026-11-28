@@ -1,0 +1,33 @@
+/* Trang quản trị: Tuyển kiểm duyệt viên (/admin/recruitments) */
+
+.adm-rc-title { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.adm-rc-thumb { flex: 0 0 54px; width: 54px; height: 40px; border-radius: 8px; object-fit: cover; background: linear-gradient(135deg, #ff5645, #ffa53b); }
+.adm-rc-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.adm-rc-featured { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; color: #b45309; background: #fef3c7; font-size: 11px; font-weight: 750; }
+.adm-rc-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.adm-rc-count { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.adm-rc-count b { color: var(--p-ink); }
+.adm-rc-pending { color: var(--p-warning); font-weight: 700; }
+
+.adm-rc-cover { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.adm-rc-cover img { width: 160px; height: 90px; border-radius: 10px; object-fit: cover; border: 1px solid var(--p-line); }
+.adm-rc-counter { justify-self: end; color: var(--p-faint); font-size: 12px; }
+
+.adm-rc-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.adm-rc-tab { padding: 6px 12px; border: 1px solid var(--p-line); border-radius: 999px; color: var(--p-ink-2); background: var(--p-raised); font-size: 12px; font-weight: 650; cursor: pointer; }
+.adm-rc-tab[aria-pressed="true"] { color: #fff; background: var(--p-ink); border-color: var(--p-ink); }
+
+.adm-rc-apps { display: grid; gap: 12px; max-height: 60vh; overflow-y: auto; padding-right: 4px; }
+.adm-rc-app { padding: 14px 16px; border: 1px solid var(--p-line); border-radius: 14px; background: var(--p-raised); }
+.adm-rc-app-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.adm-rc-app-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; color: var(--p-muted); font-size: 12px; }
+.adm-rc-app h4 { margin: 12px 0 4px; color: var(--p-ink-2); font-size: 12px; font-weight: 700; }
+.adm-rc-app p { margin: 0; color: var(--p-ink); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.adm-rc-app-note { margin-top: 10px; padding: 8px 10px; border-radius: 10px; color: var(--p-muted); background: var(--p-hover); font-size: 12px; }
+.adm-rc-review { display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--p-line); }
+.adm-rc-review textarea { width: 100%; min-height: 70px; padding: 8px 10px; border: 1px solid var(--p-line); border-radius: 10px; color: var(--p-ink); background: var(--p-surface, var(--p-raised)); font: inherit; font-size: 13px; resize: vertical; }
+.adm-rc-review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 720px) {
+  .adm-rc-app-head { flex-direction: column; }
+}

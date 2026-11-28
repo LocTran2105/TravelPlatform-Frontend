@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import {
   LayoutDashboard, MapPinned, FileClock, ClipboardCheck, Building2,
-  ShieldCheck, ShieldAlert, UserCog, LogOut, Menu, X, Compass, Home, Store, ChevronRight, PanelLeftClose, PanelLeftOpen,
+  ShieldCheck, ShieldAlert, UserCog, Megaphone, LogOut, Menu, X, Compass, Home, Store, ChevronRight, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { adminApi } from '../api/adminApi';
 import { partnerApi } from '../api/partnerApi';
@@ -35,6 +35,7 @@ const PORTALS = {
       { to: '/admin/submissions', label: 'Duyệt địa điểm', icon: Building2, countKey: 'pendingSubmissions' },
       { to: '/admin/businesses', label: 'Quản lý địa điểm', icon: Store },
       { to: '/admin/moderators', label: 'Kiểm duyệt viên', icon: UserCog },
+      { to: '/admin/recruitments', label: 'Tuyển kiểm duyệt viên', icon: Megaphone, countKey: 'pendingModeratorApplications' },
     ],
     shortcuts: [
       { to: '/moderation', label: 'Khu kiểm duyệt', icon: ShieldAlert },

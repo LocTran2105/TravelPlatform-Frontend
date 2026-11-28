@@ -7,6 +7,7 @@ export const ADMIN_ENDPOINTS = {
   businessSubmissions: '/api/admin/partner-submissions',
   businesses: '/api/admin/businesses',
   moderators: '/api/admin/moderators',
+  recruitments: '/api/admin/moderator-recruitments',
 };
 
 export const adminApi = {
@@ -113,6 +114,51 @@ export const adminApi = {
     axiosClient
       .delete(`${ADMIN_ENDPOINTS.moderators}/${userId}`)
       .then((response) => response.data),
+
+  // Tuyển kiểm duyệt viên (chỉ ADMIN).
+  getRecruitments: () =>
+    axiosClient.get(ADMIN_ENDPOINTS.recruitments).then((response) => response.data),
+
+  // body: { title, summary, content, coverImageUrl, slots, deadline, publish }
+  createRecruitment: (body) =>
+    axiosClient.post(ADMIN_ENDPOINTS.recruitments, body).then((response) => response.data),
+
+  updateRecruitment: (id, body) =>
+    axiosClient.put(`${ADMIN_ENDPOINTS.recruitments}/${id}`, body).then((response) => response.data),
+
+  // status: PUBLISHED | HIDDEN | CLOSED
+  setRecruitmentStatus: (id, status) =>
+    axiosClient.patch(`${ADMIN_ENDPOINTS.recruitments}/${id}/status`, { status }).then((response) => response.data),
+
+  setRecruitmentFeatured: (id, featured) =>
+    axiosClient.patch(`${ADMIN_ENDPOINTS.recruitments}/${id}/featured`, { featured }).then((response) => response.data),
+
+  deleteRecruitment: (id) =>
+    axiosClient.delete(`${ADMIN_ENDPOINTS.recruitments}/${id}`).then((response) => response.data),
+
+  getRecruitmentApplications: (id, status) =>
+    axiosClient
+      .get(`${ADMIN_ENDPOINTS.recruitments}/${id}/applications`, { params: status ? { status } : {} })
+      .then((response) => response.data),
+
+  approveModeratorApplication: (applicationId, note) =>
+    axiosClient
+      .put(`${ADMIN_ENDPOINTS.recruitments}/applications/${applicationId}/approve`, { note: note || null })
+      .then((response) => response.data),
+
+  rejectModeratorApplication: (applicationId, note) =>
+    axiosClient
+      .put(`${ADMIN_ENDPOINTS.recruitments}/applications/${applicationId}/reject`, { note })
+      .then((response) => response.data),
+
+  // Ảnh bìa: dùng API upload sẵn có, trả về URL ảnh (chuỗi).
+  uploadImage: (file) => {
+    const data = new FormData();
+    data.append('file', file);
+    return axiosClient
+      .post('/api/upload/image', data, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 })
+      .then((response) => (typeof response.data === 'string' ? response.data.trim() : ''));
+  },
 };
 
 export default adminApi;

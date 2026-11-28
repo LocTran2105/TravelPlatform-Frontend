@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Settings, LogOut, Store, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { User, Settings, LogOut, Store, ShieldCheck, ShieldAlert, Megaphone } from 'lucide-react';
 import { normalizeRole } from '../utils/auth.jsx';
 import NotificationBell from './NotificationBell';
 
@@ -83,7 +83,10 @@ const UserMenu = ({ user, onLogout }) => {
                 ? [{ to: '/admin', label: 'Trang quản trị', Icon: ShieldCheck }, moderationEntry]
                 : role === 'ROLE_MODERATOR'
                   ? [moderationEntry]
-                  : [{ to: '/tro-thanh-doi-tac', label: 'Đăng ký làm đối tác', Icon: Store }];
+                  : [
+                    { to: '/tro-thanh-doi-tac', label: 'Đăng ký làm đối tác', Icon: Store },
+                    { to: '/tuyen-kiem-duyet-vien', label: 'Tuyển kiểm duyệt viên', Icon: Megaphone },
+                  ];
             return entries.map((entry) => (
               <Link key={entry.to} to={entry.to} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
                 <entry.Icon className="h-4 w-4 text-slate-500" />

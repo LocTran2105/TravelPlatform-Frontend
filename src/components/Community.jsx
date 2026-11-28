@@ -13,6 +13,7 @@ import SocialAmbient from './site/SocialAmbient';
 import CommentSection from './CommentSection';
 import ReportDialog from './ReportDialog';
 import PostTripCard from './PostTripCard';
+import RecruitmentBanner from './RecruitmentBanner';
 import { getMyTrips, removePostTrip } from '../api/postTripApi';
 import { formatDateRange, visibilityInfo } from '../utils/trips';
 import { formatCount, formatCountFull } from './formatCount';
@@ -1081,6 +1082,9 @@ const Community = () => {
           <h1 className="text-3xl font-bold text-slate-900">Cộng đồng</h1>
           <p className="mt-1 text-sm text-slate-500">Khoảnh khắc, địa điểm hay và kinh nghiệm từ những người đi trước.</p>
         </motion.div>
+
+        {/* Bài tuyển kiểm duyệt viên được quản trị viên ưu tiên (chỉ hiện khi có) */}
+        <RecruitmentBanner className="mb-6" />
 
         {/* ================= FORM ĐĂNG BÀI ================= */}
         {user && (
